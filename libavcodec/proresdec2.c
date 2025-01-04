@@ -21,7 +21,7 @@
 
 /**
  * @file
- * Known FOURCCs: 'apch' (HQ), 'apcn' (SD), 'apcs' (LT), 'apco' (Proxy), 'ap4h' (4444), 'ap4x' (4444 XQ)
+ * Known FOURCCs: 'apch' (HQ), 'apcn' (SD), 'apcs' (LT), 'acpo' (Proxy), 'ap4h' (4444)
  */
 
 //#define DEBUG
@@ -778,10 +778,11 @@ static int decode_picture(AVCodecContext *avctx)
     return ctx->slices[0].ret;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     ProresContext *ctx = avctx->priv_data;
+    AVFrame *frame = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     int frame_hdr_size, pic_size, ret;
@@ -878,7 +879,7 @@ const FFCodec ff_prores_decoder = {
     .priv_data_size = sizeof(ProresContext),
     .init           = decode_init,
     .close          = decode_close,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .update_thread_context = ONLY_IF_THREADS_ENABLED(update_thread_context),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_prores_profiles),

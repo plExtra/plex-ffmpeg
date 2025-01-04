@@ -23,6 +23,11 @@
  * Loads a CUDA module and applies any decompression, if neccesary.
  */
 int ff_cuda_load_module(void *avctx, AVCUDADeviceContext *hwctx, CUmodule *cu_module,
-                        const unsigned char *data, const unsigned int length);
+                        const void *data, unsigned int length);
+
+int ff_cuda_link_add_data(void *avctx, AVCUDADeviceContext *hwctx, CUlinkState link_state,
+                          const void *data, unsigned int length,
+                          const char *name, unsigned int nb_options,
+                          CUjit_option *options, void **option_values);
 
 #endif /* AVFILTER_CUDA_LOAD_HELPER_H */

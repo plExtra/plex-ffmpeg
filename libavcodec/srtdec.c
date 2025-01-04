@@ -55,9 +55,10 @@ static int srt_to_ass(AVCodecContext *avctx, AVBPrint *dst,
     return ff_htmlmarkup_to_ass(avctx, dst, in);
 }
 
-static int srt_decode_frame(AVCodecContext *avctx, AVSubtitle *sub,
-                            int *got_sub_ptr, const AVPacket *avpkt)
+static int srt_decode_frame(AVCodecContext *avctx,
+                            void *data, int *got_sub_ptr, AVPacket *avpkt)
 {
+    AVSubtitle *sub = data;
     AVBPrint buffer;
     int x1 = -1, y1 = -1, x2 = -1, y2 = -1;
     int ret;
@@ -96,7 +97,7 @@ const FFCodec ff_srt_decoder = {
     .p.type       = AVMEDIA_TYPE_SUBTITLE,
     .p.id         = AV_CODEC_ID_SUBRIP,
     .init         = ff_ass_subtitle_header_default,
-    FF_CODEC_DECODE_SUB_CB(srt_decode_frame),
+    .decode       = srt_decode_frame,
     .flush        = ff_ass_decoder_flush,
     .priv_data_size = sizeof(FFASSDecoderContext),
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
@@ -110,7 +111,7 @@ const FFCodec ff_subrip_decoder = {
     .p.type       = AVMEDIA_TYPE_SUBTITLE,
     .p.id         = AV_CODEC_ID_SUBRIP,
     .init         = ff_ass_subtitle_header_default,
-    FF_CODEC_DECODE_SUB_CB(srt_decode_frame),
+    .decode       = srt_decode_frame,
     .flush        = ff_ass_decoder_flush,
     .priv_data_size = sizeof(FFASSDecoderContext),
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,

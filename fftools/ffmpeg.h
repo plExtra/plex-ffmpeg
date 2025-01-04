@@ -118,7 +118,6 @@ typedef struct OptionsContext {
     float readrate;
     int accurate_seek;
     int thread_queue_size;
-    int input_sync_ref;
 
     SpecifierOpt *ts_scale;
     int        nb_ts_scale;
@@ -177,8 +176,6 @@ typedef struct OptionsContext {
     int        nb_qscale;
     SpecifierOpt *forced_key_frames;
     int        nb_forced_key_frames;
-    SpecifierOpt *fps_mode;
-    int        nb_fps_mode;
     SpecifierOpt *force_fps;
     int        nb_force_fps;
     SpecifierOpt *frame_aspect_ratios;
@@ -201,6 +198,8 @@ typedef struct OptionsContext {
     int        nb_copy_initial_nonkeyframes;
     SpecifierOpt *copy_prior_start;
     int        nb_copy_prior_start;
+    SpecifierOpt *strict_ts;
+    int        nb_strict_ts;
     SpecifierOpt *filters;
     int        nb_filters;
     SpecifierOpt *filter_scripts;
@@ -233,6 +232,12 @@ typedef struct OptionsContext {
     int        nb_time_bases;
     SpecifierOpt *enc_time_bases;
     int        nb_enc_time_bases;
+
+    // PLEX
+    SpecifierOpt *hwaccel_fallback_thresholds;
+    int        nb_hwaccel_fallback_thresholds;
+    // PLEX
+
     SpecifierOpt *autoscale;
     int        nb_autoscale;
     SpecifierOpt *bits_per_raw_sample;
@@ -399,6 +404,12 @@ typedef struct InputStream {
     int nb_dts_buffer;
 
     int got_output;
+
+    // PLEX
+    int hwaccel_active;             // whether hwdec was initialized
+    int hwaccel_blocked;            // if set, don't try to use hwaccel
+    int hwaccel_error_counter;      // current error counter for fallback
+    int hwaccel_fallback_threshold; // after how many errors to start fallback
 } InputStream;
 
 typedef struct InputFile {
@@ -411,7 +422,6 @@ typedef struct InputFile {
                              at the moment when looping happens */
     AVRational time_base; /* time base of the duration */
     int64_t input_ts_offset;
-    int input_sync_ref;
 
     int64_t ts_offset;
     int64_t last_ts;
@@ -460,7 +470,7 @@ typedef struct OutputStream {
     int source_index;        /* InputStream index */
     AVStream *st;            /* stream in the output file */
     int encoding_needed;     /* true if encoding needed for this stream */
-    int64_t frame_number;
+    int frame_number;
     /* input pts and corresponding output pts
        for A/V sync */
     struct InputStream *sync_ist; /* input stream to sync against */
@@ -470,6 +480,7 @@ typedef struct OutputStream {
     int64_t first_pts;
     /* dts of the last packet sent to the muxer */
     int64_t last_mux_dts;
+    int64_t last_mux_pts;  // <PLEX
     // the timebase of the packets sent to the muxer
     AVRational mux_timebase;
     AVRational enc_timebase;
@@ -483,8 +494,8 @@ typedef struct OutputStream {
     AVFrame *filtered_frame;
     AVFrame *last_frame;
     AVPacket *pkt;
-    int64_t last_dropped;
-    int64_t last_nb0_frames[3];
+    int last_dropped;
+    int last_nb0_frames[3];
 
     void  *hwaccel_ctx;
 
@@ -493,7 +504,6 @@ typedef struct OutputStream {
     AVRational max_frame_rate;
     enum VideoSyncMethod vsync_method;
     int is_cfr;
-    const char *fps_mode;
     int force_fps;
     int top_field_first;
     int rotate_overridden;
@@ -541,9 +551,10 @@ typedef struct OutputStream {
     int inputs_done;
 
     const char *attachment_filename;
-    int streamcopy_started;
+    int seen_kf;
     int copy_initial_nonkeyframes;
     int copy_prior_start;
+    int strict_ts;
     char *disposition;
 
     int keep_pix_fmt;
@@ -556,8 +567,6 @@ typedef struct OutputStream {
     // number of frames/samples sent to the encoder
     uint64_t frames_encoded;
     uint64_t samples_encoded;
-    // number of packets received from the encoder
-    uint64_t packets_encoded;
 
     /* packet quality factor */
     int quality;
@@ -584,10 +593,6 @@ typedef struct OutputStream {
 } OutputStream;
 
 typedef struct OutputFile {
-    int index;
-
-    const AVOutputFormat *format;
-
     AVFormatContext *ctx;
     AVDictionary *opts;
     int ost_index;       /* index of the first stream in output_streams */
@@ -648,6 +653,10 @@ extern int filter_complex_nbthreads;
 extern int vstats_version;
 extern int auto_conversion_filters;
 
+//PLEX
+extern int exit_on_io_error;
+//PLEX
+
 extern const AVIOInterruptCB int_cb;
 
 extern const OptionDef options[];
@@ -655,10 +664,6 @@ extern const OptionDef options[];
 extern char *qsv_device;
 #endif
 extern HWDevice *filter_hw_device;
-
-extern int want_sdp;
-extern unsigned nb_output_dumped;
-extern int main_return_code;
 
 
 void term_init(void);
@@ -695,13 +700,5 @@ int hw_device_setup_for_encode(OutputStream *ost);
 int hw_device_setup_for_filter(FilterGraph *fg);
 
 int hwaccel_decode_init(AVCodecContext *avctx);
-
-/* open the muxer when all the streams are initialized */
-int of_check_init(OutputFile *of);
-int of_write_trailer(OutputFile *of);
-void of_close(OutputFile **pof);
-
-void of_write_packet(OutputFile *of, AVPacket *pkt, OutputStream *ost,
-                     int unqueue);
 
 #endif /* FFTOOLS_FFMPEG_H */

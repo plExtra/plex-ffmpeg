@@ -328,7 +328,7 @@ See H.264 section D.1.27 and D.2.27 for syntax and semantics.
 
 Default is pass.
 
-Insert mode works in conjunction with @code{rotate} and @code{flip} options.
+Insert mode works in conjunction with @code {rotate} and @code{flip} options.
 Any pre-existing Display orientation messages will be removed in insert or remove mode.
 Extract mode attaches the display matrix to the packet as side data.
 
@@ -694,14 +694,6 @@ for NTSC frame rate using the @option{frame_rate} option.
 @example
 ffmpeg -f lavfi -i sine=r=48000:d=1 -c pcm_s16le -bsf pcm_rechunk=r=30000/1001 -f framecrc -
 @end example
-
-@section pgs_frame_merge
-
-Merge a sequence of PGS Subtitle segments ending with an "end of display set"
-segment into a single packet.
-
-This is required by some containers that support PGS subtitles
-(muxer @code{matroska}).
 
 @section prores_metadata
 

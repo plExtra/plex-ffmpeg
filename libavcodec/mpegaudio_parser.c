@@ -22,6 +22,7 @@
 
 #include "parser.h"
 #include "mpegaudiodecheader.h"
+#include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavformat/apetag.h" // for APE tag.
 #include "libavformat/id3v1.h" // for ID3v1_TAG_SIZE
@@ -87,6 +88,7 @@ static int mpegaudio_parse(AVCodecParserContext *s1,
                         av_channel_layout_uninit(&avctx->ch_layout);
                         av_channel_layout_default(&avctx->ch_layout, channels);
                         s1->duration      = frame_size;
+                        avctx->frame_size = frame_size;
                         avctx->codec_id   = codec_id;
                         if (s->no_bitrate || !avctx->bit_rate) {
                             s->no_bitrate = 1;

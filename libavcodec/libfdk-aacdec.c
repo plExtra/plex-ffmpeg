@@ -377,10 +377,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
     return 0;
 }
 
-static int fdk_aac_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int fdk_aac_decode_frame(AVCodecContext *avctx, void *data,
                                 int *got_frame_ptr, AVPacket *avpkt)
 {
     FDKAACDecContext *s = avctx->priv_data;
+    AVFrame *frame = data;
     int ret;
     AAC_DECODER_ERROR err;
     UINT valid = avpkt->size;
@@ -483,7 +484,7 @@ const FFCodec ff_libfdk_aac_decoder = {
     .p.id           = AV_CODEC_ID_AAC,
     .priv_data_size = sizeof(FDKAACDecContext),
     .init           = fdk_aac_decode_init,
-    FF_CODEC_DECODE_CB(fdk_aac_decode_frame),
+    .decode         = fdk_aac_decode_frame,
     .close          = fdk_aac_decode_close,
     .flush          = fdk_aac_decode_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF

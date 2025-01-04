@@ -38,6 +38,7 @@
  */
 
 #include <inttypes.h>
+#include <math.h>
 #include <time.h>
 
 #include "libavutil/opt.h"
@@ -55,7 +56,6 @@
 #include "avio_internal.h"
 #include "internal.h"
 #include "avc.h"
-#include "mux.h"
 #include "mxf.h"
 #include "config.h"
 #include "version.h"
@@ -2139,7 +2139,7 @@ static int mxf_parse_dv_frame(AVFormatContext *s, AVStream *st, AVPacket *pkt)
 {
     MXFContext *mxf = s->priv_data;
     MXFStreamContext *sc = st->priv_data;
-    const uint8_t *vs_pack, *vsc_pack;
+    uint8_t *vs_pack, *vsc_pack;
     int apt, ul_index, stype, pal;
 
     if (mxf->header_written)
@@ -2496,35 +2496,6 @@ static int mxf_init_timecode(AVFormatContext *s, AVStream *st, AVRational tbc)
         return av_timecode_init(&mxf->tc, av_inv_q(tbc), 0, 0, s);
 }
 
-static enum AVChromaLocation choose_chroma_location(AVFormatContext *s, AVStream *st)
-{
-    AVCodecParameters *par = st->codecpar;
-    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(par->format);
-
-    if (par->chroma_location != AVCHROMA_LOC_UNSPECIFIED)
-        return par->chroma_location;
-
-    if (pix_desc) {
-        if (pix_desc->log2_chroma_h == 0) {
-            return AVCHROMA_LOC_TOPLEFT;
-        } else if (pix_desc->log2_chroma_w == 1 && pix_desc->log2_chroma_h == 1) {
-            if (par->field_order == AV_FIELD_UNKNOWN || par->field_order == AV_FIELD_PROGRESSIVE) {
-                switch (par->codec_id) {
-                case AV_CODEC_ID_MJPEG:
-                case AV_CODEC_ID_MPEG1VIDEO: return AVCHROMA_LOC_CENTER;
-                }
-            }
-            if (par->field_order == AV_FIELD_UNKNOWN || par->field_order != AV_FIELD_PROGRESSIVE) {
-                switch (par->codec_id) {
-                case AV_CODEC_ID_MPEG2VIDEO: return AVCHROMA_LOC_LEFT;
-                }
-            }
-        }
-    }
-
-    return AVCHROMA_LOC_UNSPECIFIED;
-}
-
 static int mxf_init(AVFormatContext *s)
 {
     MXFContext *mxf = s->priv_data;
@@ -2573,7 +2544,7 @@ static int mxf_init(AVFormatContext *s)
                 sc->h_chroma_sub_sample = 1 << pix_desc->log2_chroma_w;
                 sc->v_chroma_sub_sample = 1 << pix_desc->log2_chroma_h;
             }
-            switch (choose_chroma_location(s, st)) {
+            switch (ff_choose_chroma_location(s, st)) {
             case AVCHROMA_LOC_TOPLEFT: sc->color_siting = 0; break;
             case AVCHROMA_LOC_LEFT:    sc->color_siting = 6; break;
             case AVCHROMA_LOC_TOP:     sc->color_siting = 1; break;
@@ -2806,8 +2777,8 @@ static void mxf_write_d10_audio_packet(AVFormatContext *s, AVStream *st, AVPacke
     MXFContext *mxf = s->priv_data;
     AVIOContext *pb = s->pb;
     int frame_size = pkt->size / st->codecpar->block_align;
-    const uint8_t *samples = pkt->data;
-    const uint8_t *const end = pkt->data + pkt->size;
+    uint8_t *samples = pkt->data;
+    uint8_t *end = pkt->data + pkt->size;
     int i;
 
     klv_encode_ber4_length(pb, 4 + frame_size*4*8);

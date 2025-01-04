@@ -35,6 +35,9 @@ typedef struct {
     const AVClass *class;
     FFDemuxSubtitlesQueue q;
     int kind;
+    int handle_hls_map;
+    int64_t ts_offset;
+    int is_hls;
 } WebVTTContext;
 
 static int webvtt_probe(const AVProbeData *p)
@@ -66,7 +69,6 @@ static int webvtt_read_header(AVFormatContext *s)
 
     if (!st)
         return AVERROR(ENOMEM);
-    avpriv_set_pts_info(st, 64, 1, 1000);
     st->codecpar->codec_type = AVMEDIA_TYPE_SUBTITLE;
     st->codecpar->codec_id   = AV_CODEC_ID_WEBVTT;
     st->disposition |= webvtt->kind;
@@ -92,8 +94,43 @@ static int webvtt_read_header(AVFormatContext *s)
         /* ignore header chunk */
         if (!strncmp(p, "\xEF\xBB\xBFWEBVTT", 9) ||
             !strncmp(p, "WEBVTT", 6) ||
-            !strncmp(p, "NOTE", 4))
+            !strncmp(p, "NOTE", 4)) {
+
+            if ((p = strstr(p, "\nX-TIMESTAMP-MAP="))) {
+                char* mpegts_str_end = NULL;
+                int64_t local_ts = 0;
+                int64_t mpegts_ts = 0;
+                p += 17;
+
+                if (strncmp(p, "LOCAL:", 6))
+                    goto hls_fail;
+                p += 6;
+
+                if ((local_ts = read_ts(p)) == AV_NOPTS_VALUE)
+                    goto hls_fail;
+
+                if (!(p = strstr(p, ",")))
+                    goto hls_fail;
+                p++;
+
+                if (strncmp(p, "MPEGTS:", 7))
+                    goto hls_fail;
+                p += 7;
+
+                mpegts_ts = (int64_t)strtoll(p, &mpegts_str_end, 10);
+
+                if (mpegts_str_end == p)
+                    goto hls_fail;
+
+                webvtt->is_hls = 1;
+                webvtt->ts_offset = mpegts_ts - (local_ts * 90);
+
+hls_fail:
+                if (!webvtt->is_hls)
+                    avpriv_request_sample(s, "Unexpected X-TIMESTAMP-MAP format");
+            }
             continue;
+        }
 
         /* optional cue identifier (can be a number like in SRT or some kind of
          * chaptering id) */
@@ -165,13 +202,23 @@ static int webvtt_read_header(AVFormatContext *s)
 
 end:
     av_bprint_finalize(&cue,    NULL);
+    avpriv_set_pts_info(st, 64, 1, webvtt->is_hls ? 90000 : 1000);
     return res;
 }
 
 static int webvtt_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     WebVTTContext *webvtt = s->priv_data;
-    return ff_subtitles_queue_read_packet(&webvtt->q, pkt);
+    int ret = ff_subtitles_queue_read_packet(&webvtt->q, pkt);
+
+    if (ret >= 0 && webvtt->is_hls && webvtt->handle_hls_map) {
+        pkt->duration *= 90;
+        pkt->pts *= 90;
+        pkt->pts += webvtt->ts_offset;
+        pkt->dts = pkt->pts;
+    }
+
+    return ret;
 }
 
 static int webvtt_read_seek(AVFormatContext *s, int stream_index,
@@ -198,6 +245,7 @@ static const AVOption options[] = {
         { "captions",     "WebVTT captions kind",     0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_CAPTIONS },     INT_MIN, INT_MAX, KIND_FLAGS, "webvtt_kind" },
         { "descriptions", "WebVTT descriptions kind", 0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_DESCRIPTIONS }, INT_MIN, INT_MAX, KIND_FLAGS, "webvtt_kind" },
         { "metadata",     "WebVTT metadata kind",     0, AV_OPT_TYPE_CONST, { .i64 = AV_DISPOSITION_METADATA },     INT_MIN, INT_MAX, KIND_FLAGS, "webvtt_kind" },
+    { "handle_hls_map", "Adjust timestamps for HLS mapping if applicable", OFFSET(handle_hls_map), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, AV_OPT_FLAG_SUBTITLE_PARAM|AV_OPT_FLAG_DECODING_PARAM },
     { NULL }
 };
 

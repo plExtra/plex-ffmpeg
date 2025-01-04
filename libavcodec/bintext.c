@@ -140,8 +140,9 @@ static void draw_char(AVCodecContext *avctx, int c, int a)
     }
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx,
+                            void *data, int *got_frame,
+                            AVPacket *avpkt)
 {
     XbinContext *s = avctx->priv_data;
     const uint8_t *buf = avpkt->data;
@@ -152,7 +153,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if ((avctx->width / FONT_WIDTH) * (avctx->height / s->font_height) / 256 > buf_size)
         return AVERROR_INVALIDDATA;
 
-    s->frame = frame;
+    s->frame = data;
     s->x = s->y = 0;
     if ((ret = ff_get_buffer(avctx, s->frame, 0)) < 0)
         return ret;
@@ -224,7 +225,7 @@ const FFCodec ff_bintext_decoder = {
     .p.id           = AV_CODEC_ID_BINTEXT,
     .priv_data_size = sizeof(XbinContext),
     .init           = decode_init,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
@@ -237,7 +238,7 @@ const FFCodec ff_xbin_decoder = {
     .p.id           = AV_CODEC_ID_XBIN,
     .priv_data_size = sizeof(XbinContext),
     .init           = decode_init,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
@@ -250,7 +251,7 @@ const FFCodec ff_idf_decoder = {
     .p.id           = AV_CODEC_ID_IDF,
     .priv_data_size = sizeof(XbinContext),
     .init           = decode_init,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -67,8 +67,9 @@ static int set_palette(BethsoftvidContext *ctx)
     return 0;
 }
 
-static int bethsoftvid_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
-                                    int *got_frame, AVPacket *avpkt)
+static int bethsoftvid_decode_frame(AVCodecContext *avctx,
+                              void *data, int *got_frame,
+                              AVPacket *avpkt)
 {
     BethsoftvidContext * vid = avctx->priv_data;
     char block_type;
@@ -143,7 +144,7 @@ static int bethsoftvid_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     }
     end:
 
-    if ((ret = av_frame_ref(rframe, vid->frame)) < 0)
+    if ((ret = av_frame_ref(data, vid->frame)) < 0)
         return ret;
 
     *got_frame = 1;
@@ -166,7 +167,7 @@ const FFCodec ff_bethsoftvid_decoder = {
     .priv_data_size = sizeof(BethsoftvidContext),
     .init           = bethsoftvid_decode_init,
     .close          = bethsoftvid_decode_end,
-    FF_CODEC_DECODE_CB(bethsoftvid_decode_frame),
+    .decode         = bethsoftvid_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

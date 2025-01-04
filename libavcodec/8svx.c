@@ -86,10 +86,11 @@ static void delta_decode(uint8_t *dst, const uint8_t *src, int src_size,
 }
 
 /** decode a frame */
-static int eightsvx_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int eightsvx_decode_frame(AVCodecContext *avctx, void *data,
                                  int *got_frame_ptr, AVPacket *avpkt)
 {
     EightSvxContext *esc = avctx->priv_data;
+    AVFrame *frame       = data;
     int channels         = avctx->ch_layout.nb_channels;
     int buf_size;
     int ch, ret;
@@ -194,7 +195,7 @@ const FFCodec ff_eightsvx_fib_decoder = {
   .p.id           = AV_CODEC_ID_8SVX_FIB,
   .priv_data_size = sizeof (EightSvxContext),
   .init           = eightsvx_decode_init,
-  FF_CODEC_DECODE_CB(eightsvx_decode_frame),
+  .decode         = eightsvx_decode_frame,
   .close          = eightsvx_decode_close,
   .p.capabilities = AV_CODEC_CAP_DR1,
   .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_U8P,
@@ -210,7 +211,7 @@ const FFCodec ff_eightsvx_exp_decoder = {
   .p.id           = AV_CODEC_ID_8SVX_EXP,
   .priv_data_size = sizeof (EightSvxContext),
   .init           = eightsvx_decode_init,
-  FF_CODEC_DECODE_CB(eightsvx_decode_frame),
+  .decode         = eightsvx_decode_frame,
   .close          = eightsvx_decode_close,
   .p.capabilities = AV_CODEC_CAP_DR1,
   .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_U8P,

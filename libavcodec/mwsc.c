@@ -87,12 +87,14 @@ static int rle_uncompress(GetByteContext *gb, PutByteContext *pb, GetByteContext
     return intra;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx,
+                        void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     MWSCContext *s = avctx->priv_data;
     z_stream *const zstream = &s->zstream.zstream;
-    const uint8_t *buf = avpkt->data;
+    AVFrame *frame = data;
+    uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     GetByteContext gb;
     GetByteContext gbp;
@@ -176,7 +178,7 @@ const FFCodec ff_mwsc_decoder = {
     .priv_data_size   = sizeof(MWSCContext),
     .init             = decode_init,
     .close            = decode_close,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode           = decode_frame,
     .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
                         FF_CODEC_CAP_INIT_CLEANUP,

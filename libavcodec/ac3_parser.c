@@ -25,13 +25,12 @@
 
 #include "libavutil/channel_layout.h"
 #include "parser.h"
-#include "ac3defs.h"
-#include "ac3tab.h"
 #include "ac3_parser.h"
 #include "ac3_parser_internal.h"
 #include "aac_ac3_parser.h"
 #include "get_bits.h"
 
+#include "ac3tab.h" //PLEX
 
 #define AC3_HEADER_SIZE 7
 
@@ -70,7 +69,6 @@ int ff_ac3_parse_header(GetBitContext *gbc, AC3HeaderInfo *hdr)
         return AAC_AC3_PARSE_ERROR_BSID;
 
     hdr->num_blocks = 6;
-    hdr->ac3_bit_rate_code = -1;
 
     /* set default mix levels */
     hdr->center_mix_level   = 5;  // -4.5dB
@@ -90,8 +88,6 @@ int ff_ac3_parse_header(GetBitContext *gbc, AC3HeaderInfo *hdr)
         if(frame_size_code > 37)
             return AAC_AC3_PARSE_ERROR_FRAME_SIZE;
 
-        hdr->ac3_bit_rate_code = (frame_size_code >> 1);
-
         skip_bits(gbc, 5); // skip bsid, already got it
 
         hdr->bitstream_mode = get_bits(gbc, 3);
@@ -109,7 +105,7 @@ int ff_ac3_parse_header(GetBitContext *gbc, AC3HeaderInfo *hdr)
 
         hdr->sr_shift = FFMAX(hdr->bitstream_id, 8) - 8;
         hdr->sample_rate = ff_ac3_sample_rate_tab[hdr->sr_code] >> hdr->sr_shift;
-        hdr->bit_rate = (ff_ac3_bitrate_tab[hdr->ac3_bit_rate_code] * 1000) >> hdr->sr_shift;
+        hdr->bit_rate = (ff_ac3_bitrate_tab[frame_size_code>>1] * 1000) >> hdr->sr_shift;
         hdr->channels = ff_ac3_channels_tab[hdr->channel_mode] + hdr->lfe_on;
         hdr->frame_size = ff_ac3_frame_size_tab[frame_size_code][hdr->sr_code] * 2;
         hdr->frame_type = EAC3_FRAME_TYPE_AC3_CONVERT; //EAC3_FRAME_TYPE_INDEPENDENT;
@@ -237,11 +233,63 @@ static int ac3_sync(uint64_t state, AACAC3ParseContext *hdr_info,
     return hdr.frame_size;
 }
 
+//PLEX
+static int ac3_parse_full(AVCodecParserContext *s1, AVCodecContext *avctx,
+                          const uint8_t *buf, int buf_size)
+{
+    AACAC3ParseContext *s = s1->priv_data;
+    AC3HeaderInfo hdr = {0};
+    int ret = 0;
+    uint64_t layout = 0;
+
+    if (buf_size == 0)
+        return AVERROR(EINVAL);
+
+    while (hdr.frame_size < buf_size) {
+        GetBitContext gbc;
+
+        init_get_bits8(&gbc, buf, buf_size);
+
+        if ((ret = ff_ac3_parse_header(&gbc, &hdr)) < 0)
+            return ret;
+
+        if (hdr.frame_type == EAC3_FRAME_TYPE_DEPENDENT) {
+            int i;
+            skip_bits(&gbc, 5); // skip bitstream id
+            for (i = 0; i < (hdr.channel_mode ? 1 : 2); i++) {
+                skip_bits(&gbc, 5);
+                if (get_bits1(&gbc))
+                    skip_bits(&gbc, 8);
+            }
+            if (get_bits1(&gbc)) {
+                int channel_map = get_bits(&gbc, 16);
+                for (i = 0; i < 16; i++)
+                    if (channel_map & (1 << (EAC3_MAX_CHANNELS - i - 1)))
+                        layout |= ff_eac3_custom_channel_map_locations[i][1];
+                if (av_popcount64(hdr.channel_layout) > EAC3_MAX_CHANNELS)
+                    return AAC_AC3_PARSE_ERROR_CHANNEL_CFG;
+            }
+        } else {
+            layout |= hdr.channel_layout;
+        }
+
+        buf += hdr.frame_size;
+        buf_size -= hdr.frame_size;
+    }
+
+    s->channel_layout = layout;
+
+    return 0;
+}
+//PLEX
+
 static av_cold int ac3_parse_init(AVCodecParserContext *s1)
 {
     AACAC3ParseContext *s = s1->priv_data;
     s->header_size = AC3_HEADER_SIZE;
     s->sync = ac3_sync;
+    s->parse_full = ac3_parse_full; //PLEX
+    s1->flags |= PARSER_FLAG_ONCE;
     return 0;
 }
 

@@ -7,11 +7,9 @@ HEADERS = avformat.h                                                    \
           version_major.h                                               \
 
 OBJS = allformats.o         \
-       avformat.o           \
        avio.o               \
        aviobuf.o            \
        demux.o              \
-       demux_utils.o        \
        dump.o               \
        format.o             \
        id3v1.o              \
@@ -19,7 +17,6 @@ OBJS = allformats.o         \
        isom_tags.o          \
        metadata.o           \
        mux.o                \
-       mux_utils.o          \
        options.o            \
        os_support.o         \
        protocols.o          \
@@ -117,9 +114,9 @@ OBJS-$(CONFIG_ARGO_BRP_DEMUXER)          += argo_brp.o argo_asf.o
 OBJS-$(CONFIG_ARGO_CVG_DEMUXER)          += argo_cvg.o
 OBJS-$(CONFIG_ARGO_CVG_MUXER)            += argo_cvg.o
 OBJS-$(CONFIG_ASF_DEMUXER)               += asfdec_f.o asf.o asfcrypt.o \
-                                            asf_tags.o avlanguage.o
+                                            avlanguage.o
 OBJS-$(CONFIG_ASF_O_DEMUXER)             += asfdec_o.o asf.o asfcrypt.o \
-                                            asf_tags.o avlanguage.o
+                                            avlanguage.o
 OBJS-$(CONFIG_ASF_MUXER)                 += asfenc.o asf.o avlanguage.o
 OBJS-$(CONFIG_ASS_DEMUXER)               += assdec.o subtitles.o
 OBJS-$(CONFIG_ASS_MUXER)                 += assenc.o
@@ -276,22 +273,18 @@ OBJS-$(CONFIG_IMAGE_GIF_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_J2K_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_JPEG_PIPE_DEMUXER)    += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_JPEGLS_PIPE_DEMUXER)  += img2dec.o img2.o
-OBJS-$(CONFIG_IMAGE_JPEGXL_PIPE_DEMUXER)  += img2dec.o img2.o jpegxl_probe.o
 OBJS-$(CONFIG_IMAGE_PAM_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PBM_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PCX_PIPE_DEMUXER)     += img2dec.o img2.o
-OBJS-$(CONFIG_IMAGE_PFM_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PGMYUV_PIPE_DEMUXER)  += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PGM_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PGX_PIPE_DEMUXER)     += img2dec.o img2.o
-OBJS-$(CONFIG_IMAGE_PHM_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PHOTOCD_PIPE_DEMUXER) += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PICTOR_PIPE_DEMUXER)  += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PNG_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PPM_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_PSD_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_QDRAW_PIPE_DEMUXER)   += img2dec.o img2.o
-OBJS-$(CONFIG_IMAGE_QOI_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_SGI_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_SVG_PIPE_DEMUXER)     += img2dec.o img2.o
 OBJS-$(CONFIG_IMAGE_SUNRAST_PIPE_DEMUXER) += img2dec.o img2.o
@@ -358,6 +351,9 @@ OBJS-$(CONFIG_MOV_MUXER)                 += movenc.o av1.o avc.o hevc.o vpcc.o \
                                             movenchint.o mov_chan.o rtp.o \
                                             movenccenc.o movenc_ttml.o rawutils.o \
                                             dovi_isom.o
+OBJS-$(CONFIG_MP1_DEMUXER)               += mp3dec.o replaygain.o
+OBJS-$(CONFIG_MP1_MUXER)                 += rawenc.o
+OBJS-$(CONFIG_MP2_DEMUXER)               += mp3dec.o replaygain.o
 OBJS-$(CONFIG_MP2_MUXER)                 += rawenc.o
 OBJS-$(CONFIG_MP3_DEMUXER)               += mp3dec.o replaygain.o
 OBJS-$(CONFIG_MP3_MUXER)                 += mp3enc.o rawenc.o id3v2enc.o
@@ -517,7 +513,7 @@ OBJS-$(CONFIG_SBC_DEMUXER)               += sbcdec.o rawdec.o
 OBJS-$(CONFIG_SBC_MUXER)                 += rawenc.o
 OBJS-$(CONFIG_SBG_DEMUXER)               += sbgdec.o
 OBJS-$(CONFIG_SCC_DEMUXER)               += sccdec.o subtitles.o
-OBJS-$(CONFIG_SCC_MUXER)                 += sccenc.o
+OBJS-$(CONFIG_SCC_MUXER)                 += sccenc.o subtitles.o
 OBJS-$(CONFIG_SCD_DEMUXER)               += scd.o
 OBJS-$(CONFIG_SDP_DEMUXER)               += rtsp.o
 OBJS-$(CONFIG_SDR2_DEMUXER)              += sdr2.o
@@ -652,8 +648,8 @@ OBJS-$(CONFIG_HTTPPROXY_PROTOCOL)        += http.o httpauth.o urldecode.o
 OBJS-$(CONFIG_HTTPS_PROTOCOL)            += http.o httpauth.o urldecode.o
 OBJS-$(CONFIG_ICECAST_PROTOCOL)          += icecast.o
 OBJS-$(CONFIG_MD5_PROTOCOL)              += md5proto.o
-OBJS-$(CONFIG_MMSH_PROTOCOL)             += mmsh.o mms.o asf_tags.o
-OBJS-$(CONFIG_MMST_PROTOCOL)             += mmst.o mms.o asf_tags.o
+OBJS-$(CONFIG_MMSH_PROTOCOL)             += mmsh.o mms.o asf.o
+OBJS-$(CONFIG_MMST_PROTOCOL)             += mmst.o mms.o asf.o
 OBJS-$(CONFIG_PIPE_PROTOCOL)             += file.o
 OBJS-$(CONFIG_PROMPEG_PROTOCOL)          += prompeg.o
 OBJS-$(CONFIG_RTMP_PROTOCOL)             += rtmpproto.o rtmpdigest.o rtmppkt.o
@@ -668,8 +664,6 @@ OBJS-$(CONFIG_SRTP_PROTOCOL)             += srtpproto.o srtp.o
 OBJS-$(CONFIG_SUBFILE_PROTOCOL)          += subfile.o
 OBJS-$(CONFIG_TEE_PROTOCOL)              += teeproto.o tee_common.o
 OBJS-$(CONFIG_TCP_PROTOCOL)              += tcp.o
-OBJS-$(CONFIG_IPFS_PROTOCOL)             += ipfsgateway.o
-OBJS-$(CONFIG_IPNS_PROTOCOL)             += ipfsgateway.o
 TLS-OBJS-$(CONFIG_GNUTLS)                += tls_gnutls.o
 TLS-OBJS-$(CONFIG_LIBTLS)                += tls_libtls.o
 TLS-OBJS-$(CONFIG_MBEDTLS)               += tls_mbedtls.o

@@ -24,7 +24,6 @@
  */
 
 #include "avformat.h"
-#include "demux.h"
 #include "internal.h"
 #include "libavutil/avstring.h"
 #include "libavutil/dict.h"

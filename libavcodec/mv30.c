@@ -601,11 +601,12 @@ fail:
     return ret;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame, AVPacket *avpkt)
 {
     MV30Context *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
+    AVFrame *frame = data;
     int ret;
 
     if ((ret = init_get_bits8(gb, avpkt->data, avpkt->size)) < 0)
@@ -710,7 +711,7 @@ const FFCodec ff_mv30_decoder = {
     .priv_data_size   = sizeof(MV30Context),
     .init             = decode_init,
     .close            = decode_close,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode           = decode_frame,
     .flush            = decode_flush,
     .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |

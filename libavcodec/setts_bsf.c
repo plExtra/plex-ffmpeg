@@ -267,10 +267,10 @@ static const AVClass setts_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const FFBitStreamFilter ff_setts_bsf = {
-    .p.name         = "setts",
-    .p.priv_class   = &setts_class,
+const AVBitStreamFilter ff_setts_bsf = {
+    .name           = "setts",
     .priv_data_size = sizeof(SetTSContext),
+    .priv_class     = &setts_class,
     .init           = setts_init,
     .close          = setts_close,
     .filter         = setts_filter,

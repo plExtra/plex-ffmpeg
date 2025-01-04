@@ -77,10 +77,9 @@ av_cold void ff_vp6dsp_init(VP56DSPContext *s)
 {
     s->vp6_filter_diag4 = ff_vp6_filter_diag4_c;
 
-#if ARCH_ARM
-    ff_vp6dsp_init_arm(s);
-#elif ARCH_X86
-    ff_vp6dsp_init_x86(s);
-#endif
+    if (ARCH_ARM)
+        ff_vp6dsp_init_arm(s);
+    if (ARCH_X86)
+        ff_vp6dsp_init_x86(s);
 }
 #endif /* CONFIG_VP6_DECODER */

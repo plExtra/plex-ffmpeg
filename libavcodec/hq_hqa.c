@@ -301,10 +301,11 @@ static int hqa_decode_frame(HQContext *ctx, AVFrame *pic, size_t data_size)
     return 0;
 }
 
-static int hq_hqa_decode_frame(AVCodecContext *avctx, AVFrame *pic,
+static int hq_hqa_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame, AVPacket *avpkt)
 {
     HQContext *ctx = avctx->priv_data;
+    AVFrame *pic = data;
     uint32_t info_tag;
     unsigned int data_size;
     int ret;
@@ -388,7 +389,7 @@ const FFCodec ff_hq_hqa_decoder = {
     .p.id           = AV_CODEC_ID_HQ_HQA,
     .priv_data_size = sizeof(HQContext),
     .init           = hq_hqa_decode_init,
-    FF_CODEC_DECODE_CB(hq_hqa_decode_frame),
+    .decode         = hq_hqa_decode_frame,
     .close          = hq_hqa_decode_close,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |

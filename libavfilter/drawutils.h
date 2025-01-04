@@ -41,10 +41,8 @@ typedef struct FFDrawContext {
     uint8_t vsub[MAX_PLANES];  /*< vertical subsampling */
     uint8_t hsub_max;
     uint8_t vsub_max;
-    enum AVColorRange range;
+    int full_range;
     unsigned flags;
-    enum AVColorSpace csp;
-    double rgb2yuv[3][3];
 } FFDrawContext;
 
 typedef struct FFDrawColor {
@@ -66,29 +64,13 @@ typedef struct FFDrawColor {
  *
  * Only a limited number of pixel formats are supported, if format is not
  * supported the function will return an error.
- * @param format  pixel format of the frames that will be drawn onto
- * @param csp     color space of the frames that will be drawn onto,
- *                defaulting to BT601 or RGB depending on the specified format
- *                when AVCOL_SPC_UNSPECIFIED is passed.
- * @param range   sample value range of the frames that will be drawn onto,
- *                defaulting to TV-range unless using a legacy J format
- *                when AVCOL_RANGE_UNSPECIFIED is passed.
- * @param flags   combination of FF_DRAW_* flags.
- * @return        0 for success, < 0 for error
- */
-int ff_draw_init2(FFDrawContext *draw, enum AVPixelFormat format, enum AVColorSpace csp,
-                  enum AVColorRange range, unsigned flags);
-
-/*
- * Legacy wrapper for ff_draw_init2.
+ * flags is combination of FF_DRAW_* flags.
+ * @return  0 for success, < 0 for error
  */
 int ff_draw_init(FFDrawContext *draw, enum AVPixelFormat format, unsigned flags);
 
-
-
 /**
- * Prepare a color. The rgba value passed is always 8-bit full-range in the RGB space
- * corresponding to the space set at initialization.
+ * Prepare a color.
  */
 void ff_draw_color(FFDrawContext *draw, FFDrawColor *color, const uint8_t rgba[4]);
 

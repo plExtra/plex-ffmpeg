@@ -225,9 +225,10 @@ static void *pcm_dvd_decode_samples(AVCodecContext *avctx, const uint8_t *src,
     }
 }
 
-static int pcm_dvd_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int pcm_dvd_decode_frame(AVCodecContext *avctx, void *data,
                                 int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *src = avpkt->data;
     int buf_size       = avpkt->size;
     PCMDVDContext *s   = avctx->priv_data;
@@ -302,7 +303,7 @@ const FFCodec ff_pcm_dvd_decoder = {
     .p.id           = AV_CODEC_ID_PCM_DVD,
     .priv_data_size = sizeof(PCMDVDContext),
     .init           = pcm_dvd_decode_init,
-    FF_CODEC_DECODE_CB(pcm_dvd_decode_frame),
+    .decode         = pcm_dvd_decode_frame,
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) {

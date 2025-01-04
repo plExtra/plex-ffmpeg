@@ -113,7 +113,7 @@ typedef struct CinepakEncContext {
     enum AVPixelFormat pix_fmt;
     int w, h;
     int frame_buf_size;
-    int curframe;
+    int curframe, keyint;
     AVLFG randctx;
     uint64_t lambda;
     int *codebook_input;
@@ -215,6 +215,7 @@ static av_cold int cinepak_encode_init(AVCodecContext *avctx)
     s->h              = avctx->height;
     s->frame_buf_size = frame_buf_size;
     s->curframe       = 0;
+    s->keyint         = avctx->keyint_min;
     s->pix_fmt        = avctx->pix_fmt;
 
     // set up AVFrames
@@ -834,7 +835,8 @@ static void calculate_skip_errors(CinepakEncContext *s, int h,
         }
 }
 
-static void write_strip_keyframe(unsigned char *buf, int keyframe)
+static void write_strip_header(CinepakEncContext *s, int y, int h, int keyframe,
+                               unsigned char *buf, int strip_size)
 {
     // actually we are exclusively using intra strip coding (how much can we win
     // otherwise? how to choose which part of a codebook to update?),
@@ -842,12 +844,6 @@ static void write_strip_keyframe(unsigned char *buf, int keyframe)
     // (besides, the logic here used to be inverted: )
     //    buf[0] = keyframe ? 0x11: 0x10;
     buf[0] = keyframe ? 0x10 : 0x11;
-}
-
-static void write_strip_header(CinepakEncContext *s, int y, int h, int keyframe,
-                               unsigned char *buf, int strip_size)
-{
-    write_strip_keyframe(buf, keyframe);
     AV_WB24(&buf[1], strip_size + STRIP_HEADER_SIZE);
     // AV_WB16(&buf[4], y); /* using absolute y values works -- rl */
     AV_WB16(&buf[4], 0); /* using relative values works as well -- rl */
@@ -861,7 +857,7 @@ static int rd_strip(CinepakEncContext *s, int y, int h, int keyframe,
                     uint8_t *last_data[4], int last_linesize[4],
                     uint8_t *data[4], int linesize[4],
                     uint8_t *scratch_data[4], int scratch_linesize[4],
-                    unsigned char *buf, int64_t *best_score, int *no_skip)
+                    unsigned char *buf, int64_t *best_score)
 {
     int64_t score = 0;
     int best_size = 0;
@@ -977,9 +973,6 @@ static int rd_strip(CinepakEncContext *s, int y, int h, int keyframe,
                                             scratch_data, scratch_linesize,
                                             last_data, last_linesize, &info,
                                             s->strip_buf + STRIP_HEADER_SIZE);
-                    // in theory we could have MODE_MC without ENC_SKIP,
-                    // but MODE_V1_V4 will always be more efficient
-                    *no_skip = info.mode != MODE_MC;
 
                     write_strip_header(s, y, h, keyframe, s->strip_buf, best_size);
                 }
@@ -1006,13 +999,13 @@ static int write_cvid_header(CinepakEncContext *s, unsigned char *buf,
 }
 
 static int rd_frame(CinepakEncContext *s, const AVFrame *frame,
-                    int isakeyframe, unsigned char *buf, int buf_size, int *got_keyframe)
+                    int isakeyframe, unsigned char *buf, int buf_size)
 {
     int num_strips, strip, i, y, nexty, size, temp_size, best_size;
     uint8_t *last_data    [4], *data    [4], *scratch_data    [4];
     int      last_linesize[4],  linesize[4],  scratch_linesize[4];
     int64_t best_score = 0, score, score_temp;
-    int best_nstrips, best_strip_offsets[MAX_STRIPS];
+    int best_nstrips;
 
     if (s->pix_fmt == AV_PIX_FMT_RGB24) {
         int x;
@@ -1071,15 +1064,12 @@ static int rd_frame(CinepakEncContext *s, const AVFrame *frame,
     // would be nice but quite certainly incompatible with vintage players:
     // support encoding zero strips (meaning skip the whole frame)
     for (num_strips = s->min_strips; num_strips <= s->max_strips && num_strips <= s->h / MB_SIZE; num_strips++) {
-        int strip_offsets[MAX_STRIPS];
-        int all_no_skip = 1;
         score = 0;
         size  = 0;
 
         for (y = 0, strip = 1; y < s->h; strip++, y = nexty) {
-            int strip_height, no_skip;
+            int strip_height;
 
-            strip_offsets[strip-1] = size + CVID_HEADER_SIZE;
             nexty = strip * s->h / num_strips; // <= s->h
             // make nexty the next multiple of 4 if not already there
             if (nexty & 3)
@@ -1109,34 +1099,26 @@ static int rd_frame(CinepakEncContext *s, const AVFrame *frame,
             if ((temp_size = rd_strip(s, y, strip_height, isakeyframe,
                                       last_data, last_linesize, data, linesize,
                                       scratch_data, scratch_linesize,
-                                      s->frame_buf + strip_offsets[strip-1],
-                                      &score_temp, &no_skip)) < 0)
+                                      s->frame_buf + size + CVID_HEADER_SIZE,
+                                      &score_temp)) < 0)
                 return temp_size;
 
             score += score_temp;
             size += temp_size;
-            all_no_skip &= no_skip;
         }
 
         if (best_score == 0 || score < best_score) {
             best_score = score;
-            best_size = size + write_cvid_header(s, s->frame_buf, num_strips, size, all_no_skip);
+            best_size = size + write_cvid_header(s, s->frame_buf, num_strips, size, isakeyframe);
 
             FFSWAP(AVFrame *, s->best_frame, s->scratch_frame);
             memcpy(buf, s->frame_buf, best_size);
             best_nstrips = num_strips;
-            *got_keyframe = all_no_skip; // no skip MBs in any strip -> keyframe
-            memcpy(best_strip_offsets, strip_offsets, sizeof(strip_offsets));
         }
         // avoid trying too many strip numbers without a real reason
         // (this makes the processing of the very first frame faster)
         if (num_strips - best_nstrips > 4)
             break;
-    }
-
-    // update strip headers
-    for (i = 0; i < best_nstrips; i++) {
-        write_strip_keyframe(s->frame_buf + best_strip_offsets[i], *got_keyframe);
     }
 
     // let the number of strips slowly adapt to the changes in the contents,
@@ -1169,23 +1151,21 @@ static int cinepak_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                                 const AVFrame *frame, int *got_packet)
 {
     CinepakEncContext *s = avctx->priv_data;
-    int ret, got_keyframe;
+    int ret;
 
     s->lambda = frame->quality ? frame->quality - 1 : 2 * FF_LAMBDA_SCALE;
 
     if ((ret = ff_alloc_packet(avctx, pkt, s->frame_buf_size)) < 0)
         return ret;
-    ret       = rd_frame(s, frame, (s->curframe == 0), pkt->data, s->frame_buf_size, &got_keyframe);
+    ret       = rd_frame(s, frame, (s->curframe == 0), pkt->data, s->frame_buf_size);
     pkt->size = ret;
-    if (got_keyframe) {
+    if (s->curframe == 0)
         pkt->flags |= AV_PKT_FLAG_KEY;
-        s->curframe = 0;
-    }
     *got_packet = 1;
 
     FFSWAP(AVFrame *, s->last_frame, s->best_frame);
 
-    if (++s->curframe >= avctx->gop_size)
+    if (++s->curframe >= s->keyint)
         s->curframe = 0;
 
     return 0;
@@ -1221,7 +1201,7 @@ const FFCodec ff_cinepak_encoder = {
     .p.id           = AV_CODEC_ID_CINEPAK,
     .priv_data_size = sizeof(CinepakEncContext),
     .init           = cinepak_encode_init,
-    FF_CODEC_ENCODE_CB(cinepak_encode_frame),
+    .encode2        = cinepak_encode_frame,
     .close          = cinepak_encode_end,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_RGB24, AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE },
     .p.priv_class   = &cinepak_class,

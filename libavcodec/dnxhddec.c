@@ -613,12 +613,13 @@ static int dnxhd_decode_row(AVCodecContext *avctx, void *data,
     return 0;
 }
 
-static int dnxhd_decode_frame(AVCodecContext *avctx, AVFrame *picture,
+static int dnxhd_decode_frame(AVCodecContext *avctx, void *data,
                               int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     DNXHDContext *ctx = avctx->priv_data;
+    AVFrame *picture = data;
     int first_field = 1;
     int ret, i;
 
@@ -732,7 +733,7 @@ const FFCodec ff_dnxhd_decoder = {
     .priv_data_size = sizeof(DNXHDContext),
     .init           = dnxhd_decode_init,
     .close          = dnxhd_decode_close,
-    FF_CODEC_DECODE_CB(dnxhd_decode_frame),
+    .decode         = dnxhd_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
                       AV_CODEC_CAP_SLICE_THREADS,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_dnxhd_profiles),

@@ -70,7 +70,7 @@ typedef struct HQXContext {
     int format, dcb, width, height;
     int interlaced;
 
-    const uint8_t *src;
+    uint8_t *src;
     unsigned int data_size;
     uint32_t slice_off[17];
 

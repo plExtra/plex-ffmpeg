@@ -28,10 +28,17 @@
 
 #include "libavutil/buffer.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/fifo.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/pixfmt.h"
 #include "avcodec.h"
+#include "bsf.h"
 #include "config.h"
+
+#define FF_QSCALE_TYPE_MPEG1 0
+#define FF_QSCALE_TYPE_MPEG2 1
+#define FF_QSCALE_TYPE_H264  2
+#define FF_QSCALE_TYPE_VP56  3
 
 #define FF_SANE_NB_CHANNELS 512U
 
@@ -44,6 +51,10 @@
 #else
 #   define STRIDE_ALIGN 8
 #endif
+
+typedef struct EncodeSimpleContext {
+    AVFrame *in_frame;
+} EncodeSimpleContext;
 
 typedef struct AVCodecInternal {
     /**
@@ -71,14 +82,14 @@ typedef struct AVCodecInternal {
      * avcodec_flush_buffers().
      */
     AVPacket *in_pkt;
-    struct AVBSFContext *bsf;
+    AVBSFContext *bsf;
 
     /**
      * Properties (timestamps+side data) extracted from the last packet passed
      * for decoding.
      */
     AVPacket *last_pkt_props;
-    struct AVFifo *pkt_props;
+    AVFifo *pkt_props;
 
     /**
      * temporary buffer used for encoders to store their bitstream
@@ -95,13 +106,7 @@ typedef struct AVCodecInternal {
 
     void *frame_thread_encoder;
 
-    /**
-     * The input frame is stored here for encoders implementing the simple
-     * encode API.
-     *
-     * Not allocated in other cases.
-     */
-    AVFrame *in_frame;
+    EncodeSimpleContext es;
 
     /**
      * If this is set, then FFCodec->close (if existing) needs to be called
@@ -253,6 +258,8 @@ int ff_get_format(AVCodecContext *avctx, const enum AVPixelFormat *fmt);
  * Add a CPB properties side data to an encoding context.
  */
 AVCPBProperties *ff_add_cpb_side_data(AVCodecContext *avctx);
+
+void ff_avcodec_scan_new_things(void);
 
 /**
  * Check AVFrame for S12M timecode side data and allocate and fill TC SEI message with timecode info

@@ -22,7 +22,6 @@
 #include "libavutil/channel_layout.h"
 
 #include "avformat.h"
-#include "demux.h"
 #include "internal.h"
 #include "apetag.h"
 #include "id3v1.h"

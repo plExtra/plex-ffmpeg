@@ -31,11 +31,8 @@
 
 #define CHECK_CU(x) FF_CUDA_CHECK_DL(avctx, cu, x)
 
-int ff_cuda_load_module(void *avctx, AVCUDADeviceContext *hwctx, CUmodule *cu_module,
-                        const unsigned char *data, const unsigned int length)
+static int decompress_data(void *avctx, void **to_free, const void **data, unsigned int *length)
 {
-    CudaFunctions *cu = hwctx->internal->cuda_dl;
-
 #if CONFIG_PTX_COMPRESSION
     z_stream stream = { 0 };
     uint8_t *buf, *tmp;
@@ -54,8 +51,8 @@ int ff_cuda_load_module(void *avctx, AVCUDADeviceContext *hwctx, CUmodule *cu_mo
         return AVERROR(ENOMEM);
     }
 
-    stream.next_in = data;
-    stream.avail_in = length;
+    stream.next_in = *data;
+    stream.avail_in = *length;
 
     do {
         stream.avail_out = buf_size - stream.total_out;
@@ -87,10 +84,42 @@ int ff_cuda_load_module(void *avctx, AVCUDADeviceContext *hwctx, CUmodule *cu_mo
 
     inflateEnd(&stream);
 
-    ret = CHECK_CU(cu->cuModuleLoadData(cu_module, buf));
-    av_free(buf);
-    return ret;
-#else
-    return CHECK_CU(cu->cuModuleLoadData(cu_module, data));
+    *data = *to_free = buf;
+    *length = stream.total_out;
+
 #endif
+    return 0;
+}
+
+int ff_cuda_load_module(void *avctx, AVCUDADeviceContext *hwctx, CUmodule *cu_module,
+                        const void *data, unsigned int length)
+{
+    CudaFunctions *cu = hwctx->internal->cuda_dl;
+    void *to_free = NULL;
+    int ret;
+    if ((ret = decompress_data(avctx, &to_free, &data, &length)) < 0)
+        return ret;
+
+    ret = CHECK_CU(cu->cuModuleLoadData(cu_module, data));
+    av_free(to_free);
+
+    return ret;
+}
+
+int ff_cuda_link_add_data(void *avctx, AVCUDADeviceContext *hwctx, CUlinkState link_state,
+                          const void *data, unsigned int length,
+                          const char *name, unsigned int nb_options,
+                          CUjit_option *options, void **option_values)
+{
+    CudaFunctions *cu = hwctx->internal->cuda_dl;
+    void *to_free = NULL;
+    int ret;
+    if ((ret = decompress_data(avctx, &to_free, &data, &length)) < 0)
+        return ret;
+
+    ret = CHECK_CU(cu->cuLinkAddData(link_state, CU_JIT_INPUT_PTX, (void*)data, length, name,
+                                     nb_options, options, option_values));
+    av_free(to_free);
+
+    return ret;
 }

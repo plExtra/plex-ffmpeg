@@ -29,7 +29,10 @@
 
 #include "config.h"
 
+#include <stdlib.h>
 #include <sys/stat.h>
+
+#include "libavutil/mem.h"
 
 #ifdef _WIN32
 #if HAVE_DIRECT_H
@@ -49,38 +52,11 @@
 #  ifdef stat
 #   undef stat
 #  endif
-
-#  define stat win32_stat
-
-    /*
-     * The POSIX definition for the stat() function uses a struct of the
-     * same name (struct stat), that why it takes this extra effort  for
-     * redirecting/replacing the stat() function with our own one which
-     * is capable to handle long path names on Windows.
-     * The struct below roughly follows the POSIX definition. Time values
-     * are 64bit, but in cases when _USE_32BIT_TIME_T is defined, they
-     * will be set to values no larger than INT32_MAX which corresponds
-     * to file times up to the year 2038.
-     */
-    struct win32_stat
-    {
-        _dev_t         st_dev;     /* ID of device containing file */
-        _ino_t         st_ino;     /* inode number */
-        unsigned short st_mode;    /* protection */
-        short          st_nlink;   /* number of hard links */
-        short          st_uid;     /* user ID of owner */
-        short          st_gid;     /* group ID of owner */
-        _dev_t         st_rdev;    /* device ID (if special file) */
-        int64_t        st_size;    /* total size, in bytes */
-        int64_t        st_atime;   /* time of last access */
-        int64_t        st_mtime;   /* time of last modification */
-        int64_t        st_ctime;   /* time of last status change */
-    };
-
+#  define stat _stati64
 #  ifdef fstat
 #   undef fstat
 #  endif
-#  define fstat win32_fstat
+#  define fstat(f,s) _fstati64((f), (s))
 #endif /* defined(_WIN32) */
 
 
@@ -174,14 +150,14 @@ int ff_poll(struct pollfd *fds, nfds_t numfds, int timeout);
 #include <windows.h>
 #include "libavutil/wchar_filename.h"
 
-#define DEF_FS_FUNCTION(name, wfunc, afunc)               \
-static inline int win32_##name(const char *filename_utf8) \
+#define DEF_FS_FUNCTION3(rettype, retfail, name, wfunc, afunc) \
+static inline rettype win32_##name(const char *filename_utf8) \
 {                                                         \
     wchar_t *filename_w;                                  \
-    int ret;                                              \
+    rettype ret;                                          \
                                                           \
-    if (get_extended_win32_path(filename_utf8, &filename_w)) \
-        return -1;                                        \
+    if (utf8towchar(filename_utf8, &filename_w))          \
+        return retfail;                                   \
     if (!filename_w)                                      \
         goto fallback;                                    \
                                                           \
@@ -194,80 +170,43 @@ fallback:                                                 \
     return afunc(filename_utf8);                          \
 }
 
+#define DEF_FS_FUNCTION(name, wfunc, afunc) DEF_FS_FUNCTION3(int, -1, name, wfunc, afunc)
+
 DEF_FS_FUNCTION(unlink, _wunlink, _unlink)
 DEF_FS_FUNCTION(mkdir,  _wmkdir,  _mkdir)
 DEF_FS_FUNCTION(rmdir,  _wrmdir , _rmdir)
 
-static inline int win32_access(const char *filename_utf8, int mode)
-{
-    wchar_t *filename_w;
-    int ret;
-    if (get_extended_win32_path(filename_utf8, &filename_w))
-        return -1;
-    if (!filename_w)
-        goto fallback;
-    ret = _waccess(filename_w, mode);
-    av_free(filename_w);
-    return ret;
-fallback:
-    return _access(filename_utf8, mode);
+#define DEF_FS_FUNCTION2(name, wfunc, afunc, partype)     \
+static inline int win32_##name(const char *filename_utf8, partype par) \
+{                                                         \
+    wchar_t *filename_w;                                  \
+    int ret;                                              \
+                                                          \
+    if (utf8towchar(filename_utf8, &filename_w))          \
+        return -1;                                        \
+    if (!filename_w)                                      \
+        goto fallback;                                    \
+                                                          \
+    ret = wfunc(filename_w, par);                         \
+    av_free(filename_w);                                  \
+    return ret;                                           \
+                                                          \
+fallback:                                                 \
+    /* filename may be be in CP_ACP */                    \
+    return afunc(filename_utf8, par);                     \
 }
 
-static inline void copy_stat(struct _stat64 *crtstat, struct win32_stat *buf)
-{
-    buf->st_dev   = crtstat->st_dev;
-    buf->st_ino   = crtstat->st_ino;
-    buf->st_mode  = crtstat->st_mode;
-    buf->st_nlink = crtstat->st_nlink;
-    buf->st_uid   = crtstat->st_uid;
-    buf->st_gid   = crtstat->st_gid;
-    buf->st_rdev  = crtstat->st_rdev;
-    buf->st_size  = crtstat->st_size;
-    buf->st_atime = crtstat->st_atime;
-    buf->st_mtime = crtstat->st_mtime;
-    buf->st_ctime = crtstat->st_ctime;
-}
-
-static inline int win32_stat(const char *filename_utf8, struct win32_stat *buf)
-{
-    struct _stat64 crtstat = { 0 };
-    wchar_t *filename_w;
-    int ret;
-
-    if (get_extended_win32_path(filename_utf8, &filename_w))
-        return -1;
-
-    if (filename_w) {
-        ret = _wstat64(filename_w, &crtstat);
-        av_free(filename_w);
-    } else
-        ret = _stat64(filename_utf8, &crtstat);
-
-    copy_stat(&crtstat, buf);
-
-    return ret;
-}
-
-static inline int win32_fstat(int fd, struct win32_stat *buf)
-{
-    struct _stat64 crtstat = { 0 };
-    int ret;
-
-    ret = _fstat64(fd, &crtstat);
-
-    copy_stat(&crtstat, buf);
-
-    return ret;
-}
+DEF_FS_FUNCTION2(access, _waccess, _access, int)
+DEF_FS_FUNCTION2(stat, _wstati64, _stati64, struct stat*)
 
 static inline int win32_rename(const char *src_utf8, const char *dest_utf8)
 {
     wchar_t *src_w, *dest_w;
     int ret;
 
-    if (get_extended_win32_path(src_utf8, &src_w))
+    if (utf8towchar(src_utf8, &src_w))
         return -1;
-    if (get_extended_win32_path(dest_utf8, &dest_w)) {
+    if (utf8towchar(dest_utf8, &dest_w)) {
         av_free(src_w);
         return -1;
     }
@@ -277,7 +216,7 @@ static inline int win32_rename(const char *src_utf8, const char *dest_utf8)
         goto fallback;
     }
 
-    ret = MoveFileExW(src_w, dest_w, MOVEFILE_REPLACE_EXISTING);
+    ret = !MoveFileExW(src_w, dest_w, MOVEFILE_REPLACE_EXISTING);
     av_free(src_w);
     av_free(dest_w);
     // Lacking proper mapping from GetLastError() error codes to errno codes
@@ -310,6 +249,32 @@ fallback:
 #define rmdir       win32_rmdir
 #define unlink      win32_unlink
 #define access      win32_access
+
+static inline char *ff_getenv(const char *name)
+{
+    size_t max = 32767; // documented maximum
+    wchar_t *wenv = av_mallocz_array(max + 1, sizeof(wchar_t));
+    wchar_t *wname;
+    char *env = NULL;
+    (void)utf8towchar(name, &wname);
+    if (!wenv || !wname)
+        goto done;
+    if (!GetEnvironmentVariableW(wname, wenv, max))
+        goto done;
+    (void)wchartoutf8(wenv, &env);
+done:
+    av_free(wenv);
+    av_free(wname);
+    return env;
+}
+
+#else
+
+static inline char *ff_getenv(const char *name)
+{
+    char *env = getenv(name);
+    return env ? av_strdup(env) : NULL;
+}
 
 #endif
 

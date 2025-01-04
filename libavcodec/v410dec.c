@@ -28,7 +28,7 @@
 
 typedef struct ThreadData {
     AVFrame *frame;
-    const uint8_t *buf;
+    uint8_t *buf;
     int stride;
 } ThreadData;
 
@@ -85,11 +85,12 @@ static int v410_decode_slice(AVCodecContext *avctx, void *arg, int jobnr, int th
     return 0;
 }
 
-static int v410_decode_frame(AVCodecContext *avctx, AVFrame *pic,
+static int v410_decode_frame(AVCodecContext *avctx, void *data,
                              int *got_frame, AVPacket *avpkt)
 {
     ThreadData td;
-    const uint8_t *src = avpkt->data;
+    AVFrame *pic = data;
+    uint8_t *src = avpkt->data;
     int ret;
     int thread_count = av_clip(avctx->thread_count, 1, avctx->height/4);
 
@@ -120,7 +121,7 @@ const FFCodec ff_v410_decoder = {
     .p.type       = AVMEDIA_TYPE_VIDEO,
     .p.id         = AV_CODEC_ID_V410,
     .init         = v410_decode_init,
-    FF_CODEC_DECODE_CB(v410_decode_frame),
+    .decode       = v410_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SLICE_THREADS |
                     AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,

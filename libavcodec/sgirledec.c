@@ -110,9 +110,10 @@ static int decode_sgirle8(AVCodecContext *avctx, uint8_t *dst,
     return 0;
 }
 
-static int sgirle_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int sgirle_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame, AVPacket *avpkt)
 {
+    AVFrame *frame = data;
     int ret;
 
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
@@ -137,7 +138,7 @@ const FFCodec ff_sgirle_decoder = {
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_SGIRLE,
     .init           = sgirle_decode_init,
-    FF_CODEC_DECODE_CB(sgirle_decode_frame),
+    .decode         = sgirle_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -134,9 +134,6 @@ static av_cold int init(AVFilterContext *ctx)
     s-> next_cache= av_malloc_array(s->cache_allocated, sizeof(*s-> next_cache));
     s-> zyklus    = av_malloc_array(s->maxiter + 16, sizeof(*s->zyklus));
 
-    if (!s->point_cache || !s->next_cache || !s->zyklus)
-        return AVERROR(ENOMEM);
-
     return 0;
 }
 
@@ -149,18 +146,17 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&s->zyklus);
 }
 
-static int config_props(AVFilterLink *outlink)
+static int config_props(AVFilterLink *inlink)
 {
-    AVFilterContext *ctx = outlink->src;
+    AVFilterContext *ctx = inlink->src;
     MBContext *s = ctx->priv;
 
     if (av_image_check_size(s->w, s->h, 0, ctx) < 0)
         return AVERROR(EINVAL);
 
-    outlink->w = s->w;
-    outlink->h = s->h;
-    outlink->time_base = av_inv_q(s->frame_rate);
-    outlink->frame_rate = s->frame_rate;
+    inlink->w = s->w;
+    inlink->h = s->h;
+    inlink->time_base = av_inv_q(s->frame_rate);
 
     return 0;
 }

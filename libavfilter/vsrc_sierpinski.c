@@ -137,19 +137,18 @@ static int draw_carpet_slice(AVFilterContext *ctx, void *arg, int job, int nb_jo
     return 0;
 }
 
-static int config_output(AVFilterLink *outlink)
+static int config_output(AVFilterLink *inlink)
 {
-    AVFilterContext *ctx = outlink->src;
+    AVFilterContext *ctx = inlink->src;
     SierpinskiContext *s = ctx->priv;
 
     if (av_image_check_size(s->w, s->h, 0, ctx) < 0)
         return AVERROR(EINVAL);
 
-    outlink->w = s->w;
-    outlink->h = s->h;
-    outlink->time_base = av_inv_q(s->frame_rate);
-    outlink->sample_aspect_ratio = (AVRational) {1, 1};
-    outlink->frame_rate = s->frame_rate;
+    inlink->w = s->w;
+    inlink->h = s->h;
+    inlink->time_base = av_inv_q(s->frame_rate);
+    inlink->sample_aspect_ratio = (AVRational) {1, 1};
     if (s->seed == -1)
         s->seed = av_get_random_seed();
     av_lfg_init(&s->lfg, s->seed);

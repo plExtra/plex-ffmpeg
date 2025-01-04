@@ -130,9 +130,11 @@ static int pix_decode_header(PixHeader *out, GetByteContext *pgb)
     return 0;
 }
 
-static int pix_decode_frame(AVCodecContext *avctx, AVFrame *frame,
-                            int *got_frame, AVPacket *avpkt)
+static int pix_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
+                            AVPacket *avpkt)
 {
+    AVFrame *frame = data;
+
     int ret, i;
     GetByteContext gb;
 
@@ -290,5 +292,5 @@ const FFCodec ff_brender_pix_decoder = {
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_BRENDER_PIX,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    FF_CODEC_DECODE_CB(pix_decode_frame),
+    .decode       = pix_decode_frame,
 };

@@ -522,10 +522,11 @@ static int tdsc_parse_dtsm(AVCodecContext *avctx)
     return 0;
 }
 
-static int tdsc_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int tdsc_decode_frame(AVCodecContext *avctx, void *data,
                              int *got_frame, AVPacket *avpkt)
 {
     TDSCContext *ctx = avctx->priv_data;
+    AVFrame *frame = data;
     int ret, tag_header, keyframe = 0;
     uLongf dlen;
 
@@ -627,7 +628,7 @@ const FFCodec ff_tdsc_decoder = {
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_TDSC,
     .init           = tdsc_init,
-    FF_CODEC_DECODE_CB(tdsc_decode_frame),
+    .decode         = tdsc_decode_frame,
     .close          = tdsc_close,
     .priv_data_size = sizeof(TDSCContext),
     .p.capabilities = AV_CODEC_CAP_DR1,

@@ -480,7 +480,7 @@ static int read_audio_mux_element(struct LATMContext *latmctx,
 }
 
 
-static int latm_decode_frame(AVCodecContext *avctx, AVFrame *out,
+static int latm_decode_frame(AVCodecContext *avctx, void *out,
                              int *got_frame_ptr, AVPacket *avpkt)
 {
     struct LATMContext *latmctx = avctx->priv_data;
@@ -552,15 +552,22 @@ static av_cold int latm_decode_init(AVCodecContext *avctx)
     return ret;
 }
 
+//PLEX
+#ifdef BUILDING_AAC_LC_DECODER_EXTERNAL
+const FFCodec ff_aac_lc_decoder = {
+    .p.name            = "aac_lc",
+#else
 const FFCodec ff_aac_decoder = {
-    .p.name          = "aac",
+    .p.name            = "aac",
+#endif
+//PLEX
     .p.long_name     = NULL_IF_CONFIG_SMALL("AAC (Advanced Audio Coding)"),
     .p.type          = AVMEDIA_TYPE_AUDIO,
     .p.id            = AV_CODEC_ID_AAC,
     .priv_data_size  = sizeof(AACContext),
     .init            = aac_decode_init,
     .close           = aac_decode_close,
-    FF_CODEC_DECODE_CB(aac_decode_frame),
+    .decode          = aac_decode_frame,
     .p.sample_fmts   = (const enum AVSampleFormat[]) {
         AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE
     },
@@ -588,7 +595,7 @@ const FFCodec ff_aac_latm_decoder = {
     .priv_data_size  = sizeof(struct LATMContext),
     .init            = latm_decode_init,
     .close           = aac_decode_close,
-    FF_CODEC_DECODE_CB(latm_decode_frame),
+    .decode          = latm_decode_frame,
     .p.sample_fmts   = (const enum AVSampleFormat[]) {
         AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE
     },

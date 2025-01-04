@@ -218,7 +218,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
         av_frame_unref(p->frame);
         p->got_frame = 0;
-        p->result = codec->cb.decode(avctx, p->frame, &p->got_frame, p->avpkt);
+        p->result = codec->decode(avctx, p->frame, &p->got_frame, p->avpkt);
 
         if ((p->result < 0 || !p->got_frame) && p->frame->buf[0])
             ff_thread_release_buffer(avctx, p->frame);
@@ -714,6 +714,13 @@ void ff_frame_thread_free(AVCodecContext *avctx, int thread_count)
         }
     }
 
+    if (fctx->prev_thread && fctx->prev_thread != fctx->threads)
+        if (update_context_from_thread(fctx->threads->avctx, fctx->prev_thread->avctx, 0) < 0) {
+            av_log(avctx, AV_LOG_ERROR, "Final thread update failed\n");
+            fctx->prev_thread->avctx->internal->is_copy = fctx->threads->avctx->internal->is_copy;
+            fctx->threads->avctx->internal->is_copy = 1;
+        }
+
     for (i = 0; i < thread_count; i++) {
         PerThreadContext *p = &fctx->threads[i];
         AVCodecContext *ctx = p->avctx;
@@ -784,7 +791,7 @@ static av_cold int init_thread(PerThreadContext *p, int *threads_to_free,
     p->parent = fctx;
     p->avctx  = copy;
 
-    copy->internal = av_mallocz(sizeof(*copy->internal));
+    copy->internal = av_memdup(avctx->internal, sizeof(*avctx->internal));
     if (!copy->internal)
         return AVERROR(ENOMEM);
     copy->internal->thread_ctx = p;
@@ -870,6 +877,8 @@ int ff_frame_thread_init(AVCodecContext *avctx)
         av_freep(&avctx->internal->thread_ctx);
         return err;
     }
+
+    avctx->thread_safe_callbacks = 1;
 
     fctx->async_lock = 1;
     fctx->delaying = 1;

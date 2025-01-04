@@ -28,7 +28,6 @@
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/channel_layout.h"
-#include "libavutil/fifo.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
@@ -134,15 +133,17 @@ int attribute_align_arg avcodec_open2(AVCodecContext *avctx, const AVCodec *code
         codec = avctx->codec;
     codec2 = ffcodec(codec);
 
-    if ((avctx->codec_type != AVMEDIA_TYPE_UNKNOWN && avctx->codec_type != codec->type) ||
-        (avctx->codec_id   != AV_CODEC_ID_NONE     && avctx->codec_id   != codec->id)) {
+    if ((avctx->codec_type == AVMEDIA_TYPE_UNKNOWN || avctx->codec_type == codec->type) &&
+        avctx->codec_id == AV_CODEC_ID_NONE) {
+        avctx->codec_type = codec->type;
+        avctx->codec_id   = codec->id;
+    }
+    if (avctx->codec_id != codec->id || (avctx->codec_type != codec->type &&
+                                         avctx->codec_type != AVMEDIA_TYPE_ATTACHMENT)) {
         av_log(avctx, AV_LOG_ERROR, "Codec type or id mismatches\n");
         return AVERROR(EINVAL);
     }
-
-    avctx->codec_type = codec->type;
-    avctx->codec_id   = codec->id;
-    avctx->codec      = codec;
+    avctx->codec = codec;
 
     if (avctx->extradata_size < 0 || avctx->extradata_size >= FF_MAX_EXTRADATA_SIZE)
         return AVERROR(EINVAL);
@@ -156,7 +157,14 @@ int attribute_align_arg avcodec_open2(AVCodecContext *avctx, const AVCodec *code
 
     avci->buffer_frame = av_frame_alloc();
     avci->buffer_pkt = av_packet_alloc();
-    if (!avci->buffer_frame || !avci->buffer_pkt) {
+    avci->es.in_frame = av_frame_alloc();
+    avci->in_pkt = av_packet_alloc();
+    avci->last_pkt_props = av_packet_alloc();
+    avci->pkt_props = av_fifo_alloc2(1, sizeof(*avci->last_pkt_props),
+                                     AV_FIFO_FLAG_AUTO_GROW);
+    if (!avci->buffer_frame || !avci->buffer_pkt          ||
+        !avci->es.in_frame  || !avci->in_pkt     ||
+        !avci->last_pkt_props || !avci->pkt_props) {
         ret = AVERROR(ENOMEM);
         goto free_and_end;
     }
@@ -285,6 +293,9 @@ FF_ENABLE_DEPRECATION_WARNINGS
     if (ret < 0)
         goto free_and_end;
 
+    if (!HAVE_THREADS)
+        av_log(avctx, AV_LOG_WARNING, "Warning: not compiled with thread support, using thread emulation\n");
+
     if (CONFIG_FRAME_THREAD_ENCODER && av_codec_is_encoder(avctx->codec)) {
         ret = ff_frame_thread_encoder_init(avctx);
         if (ret < 0)
@@ -388,19 +399,6 @@ void avcodec_flush_buffers(AVCodecContext *avctx)
                    "that doesn't support it\n");
             return;
         }
-        if (avci->in_frame)
-            av_frame_unref(avci->in_frame);
-    } else {
-        av_packet_unref(avci->last_pkt_props);
-        while (av_fifo_read(avci->pkt_props, avci->last_pkt_props, 1) >= 0)
-            av_packet_unref(avci->last_pkt_props);
-
-        av_packet_unref(avci->in_pkt);
-
-        avctx->pts_correction_last_pts =
-        avctx->pts_correction_last_dts = INT64_MIN;
-
-        av_bsf_flush(avci->bsf);
     }
 
     avci->draining      = 0;
@@ -409,10 +407,23 @@ void avcodec_flush_buffers(AVCodecContext *avctx)
     av_frame_unref(avci->buffer_frame);
     av_packet_unref(avci->buffer_pkt);
 
+    av_packet_unref(avci->last_pkt_props);
+    while (av_fifo_read(avci->pkt_props, avci->last_pkt_props, 1) >= 0)
+        av_packet_unref(avci->last_pkt_props);
+
+    av_frame_unref(avci->es.in_frame);
+    av_packet_unref(avci->in_pkt);
+
     if (HAVE_THREADS && avctx->active_thread_type & FF_THREAD_FRAME)
         ff_thread_flush(avctx);
     else if (ffcodec(avctx->codec)->flush)
         ffcodec(avctx->codec)->flush(avctx);
+
+    avctx->pts_correction_last_pts =
+    avctx->pts_correction_last_dts = INT64_MIN;
+
+    if (avci->bsf)
+        av_bsf_flush(avci->bsf);
 }
 
 void avsubtitle_free(AVSubtitle *sub)
@@ -420,15 +431,12 @@ void avsubtitle_free(AVSubtitle *sub)
     int i;
 
     for (i = 0; i < sub->num_rects; i++) {
-        AVSubtitleRect *const rect = sub->rects[i];
-
-        av_freep(&rect->data[0]);
-        av_freep(&rect->data[1]);
-        av_freep(&rect->data[2]);
-        av_freep(&rect->data[3]);
-        av_freep(&rect->text);
-        av_freep(&rect->ass);
-
+        av_freep(&sub->rects[i]->data[0]);
+        av_freep(&sub->rects[i]->data[1]);
+        av_freep(&sub->rects[i]->data[2]);
+        av_freep(&sub->rects[i]->data[3]);
+        av_freep(&sub->rects[i]->text);
+        av_freep(&sub->rects[i]->ass);
         av_freep(&sub->rects[i]);
     }
 
@@ -469,7 +477,7 @@ av_cold int avcodec_close(AVCodecContext *avctx)
         av_packet_free(&avci->last_pkt_props);
 
         av_packet_free(&avci->in_pkt);
-        av_frame_free(&avci->in_frame);
+        av_frame_free(&avci->es.in_frame);
 
         av_buffer_unref(&avci->pool);
 

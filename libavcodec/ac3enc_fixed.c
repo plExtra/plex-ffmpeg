@@ -26,12 +26,16 @@
  * fixed-point AC-3 encoder.
  */
 
+#include "config_components.h"
+
 #define AC3ENC_FLOAT 0
 #define FFT_FLOAT 0
 #include "audiodsp.h"
 #include "ac3enc.h"
 #include "codec_internal.h"
+#if CONFIG_EAC3_ENCODER
 #include "eac3enc.h"
+#endif
 #include "kbdwin.h"
 
 static void sum_square_butterfly(AC3EncodeContext *s, int64_t sum[4],
@@ -128,7 +132,7 @@ const FFCodec ff_ac3_fixed_encoder = {
     .p.capabilities  = AV_CODEC_CAP_DR1,
     .priv_data_size  = sizeof(AC3EncodeContext),
     .init            = ac3_fixed_encode_init,
-    FF_CODEC_ENCODE_CB(ff_ac3_fixed_encode_frame),
+    .encode2         = ff_ac3_fixed_encode_frame,
     .close           = ff_ac3_encode_close,
     .p.sample_fmts   = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S32P,
                                                       AV_SAMPLE_FMT_NONE },

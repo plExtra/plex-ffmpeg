@@ -214,6 +214,8 @@ Pause.
 Toggle mute.
 
 @item 9, 0
+Decrease and increase volume respectively.
+
 @item /, *
 Decrease and increase volume respectively.
 

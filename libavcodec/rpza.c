@@ -256,8 +256,9 @@ static av_cold int rpza_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int rpza_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
-                             int *got_frame, AVPacket *avpkt)
+static int rpza_decode_frame(AVCodecContext *avctx,
+                             void *data, int *got_frame,
+                             AVPacket *avpkt)
 {
     RpzaContext *s = avctx->priv_data;
     int ret;
@@ -268,7 +269,7 @@ static int rpza_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     if (ret < 0)
         return ret;
 
-    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
+    if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
 
     *got_frame      = 1;
@@ -294,7 +295,7 @@ const FFCodec ff_rpza_decoder = {
     .priv_data_size = sizeof(RpzaContext),
     .init           = rpza_decode_init,
     .close          = rpza_decode_end,
-    FF_CODEC_DECODE_CB(rpza_decode_frame),
+    .decode         = rpza_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

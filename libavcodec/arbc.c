@@ -116,10 +116,11 @@ static int fill_tileX(AVCodecContext *avctx, int tile_width, int tile_height,
     return pixels_overwritten;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame, AVPacket *avpkt)
 {
     ARBCContext *s = avctx->priv_data;
+    AVFrame *frame = data;
     int ret, nb_segments;
     int prev_pixels = avctx->width * avctx->height;
 
@@ -218,7 +219,7 @@ const FFCodec ff_arbc_decoder = {
     .p.id           = AV_CODEC_ID_ARBC,
     .priv_data_size = sizeof(ARBCContext),
     .init           = decode_init,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .flush          = decode_flush,
     .close          = decode_close,
     .p.capabilities = AV_CODEC_CAP_DR1,

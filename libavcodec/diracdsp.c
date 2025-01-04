@@ -247,7 +247,6 @@ av_cold void ff_diracdsp_init(DiracDSPContext *c)
     PIXFUNC(avg, 16);
     PIXFUNC(avg, 32);
 
-#if ARCH_X86
-    ff_diracdsp_init_x86(c);
-#endif
+    if (ARCH_X86)
+        ff_diracdsp_init_x86(c);
 }

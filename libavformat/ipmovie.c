@@ -35,7 +35,6 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
-#include "demux.h"
 #include "internal.h"
 
 #define CHUNK_PREAMBLE_SIZE 4

@@ -214,9 +214,8 @@ av_cold int ff_dct_init(DCTContext *s, int nbits, enum DCTTransformType inverse)
     }
 
     s->dct32 = ff_dct32_float;
-#if ARCH_X86
-    ff_dct_init_x86(s);
-#endif
+    if (ARCH_X86)
+        ff_dct_init_x86(s);
 
     return 0;
 }

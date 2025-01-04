@@ -65,9 +65,10 @@ static av_cold int gsm_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int gsm_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int gsm_decode_frame(AVCodecContext *avctx, void *data,
                             int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame = data;
     int res;
     GetBitContext gb;
     const uint8_t *buf = avpkt->data;
@@ -120,7 +121,7 @@ const FFCodec ff_gsm_decoder = {
     .p.id           = AV_CODEC_ID_GSM,
     .priv_data_size = sizeof(GSMContext),
     .init           = gsm_init,
-    FF_CODEC_DECODE_CB(gsm_decode_frame),
+    .decode         = gsm_decode_frame,
     .flush          = gsm_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
@@ -134,7 +135,7 @@ const FFCodec ff_gsm_ms_decoder = {
     .p.id           = AV_CODEC_ID_GSM_MS,
     .priv_data_size = sizeof(GSMContext),
     .init           = gsm_init,
-    FF_CODEC_DECODE_CB(gsm_decode_frame),
+    .decode         = gsm_decode_frame,
     .flush          = gsm_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,

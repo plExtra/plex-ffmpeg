@@ -250,7 +250,7 @@ static void idct(int16_t block[64])
 
 static av_cold void init_vlcs(void)
 {
-    static VLCElem table[2][4][32];
+    static VLC_TYPE table[2][4][32][2];
     int i, j;
 
     for (i = 0; i < 2; i++) {
@@ -834,12 +834,13 @@ static int decode_i_frame(FourXContext *f, const uint8_t *buf, int length)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf    = avpkt->data;
     int buf_size          = avpkt->size;
     FourXContext *const f = avctx->priv_data;
+    AVFrame *picture      = data;
     int i, frame_4cc, frame_size, ret;
 
     if (buf_size < 20)
@@ -1034,7 +1035,7 @@ const FFCodec ff_fourxm_decoder = {
     .priv_data_size = sizeof(FourXContext),
     .init           = decode_init,
     .close          = decode_end,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

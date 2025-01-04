@@ -64,7 +64,7 @@ static int getbit(GetByteContext *gb, uint32_t *bitbuf, int *bits)
     return ret;
 }
 
-static void unpack_intraframe(AVCodecContext *avctx, const uint8_t *src,
+static void unpack_intraframe(AVCodecContext *avctx, uint8_t *src,
                               uint32_t size)
 {
     Hnm4VideoContext *hnm = avctx->priv_data;
@@ -147,7 +147,7 @@ static void copy_processed_frame(AVCodecContext *avctx, AVFrame *frame)
     }
 }
 
-static int decode_interframe_v4(AVCodecContext *avctx, const uint8_t *src, uint32_t size)
+static int decode_interframe_v4(AVCodecContext *avctx, uint8_t *src, uint32_t size)
 {
     Hnm4VideoContext *hnm = avctx->priv_data;
     GetByteContext gb;
@@ -276,7 +276,7 @@ static int decode_interframe_v4(AVCodecContext *avctx, const uint8_t *src, uint3
     return 0;
 }
 
-static void decode_interframe_v4a(AVCodecContext *avctx, const uint8_t *src,
+static void decode_interframe_v4a(AVCodecContext *avctx, uint8_t *src,
                                   uint32_t size)
 {
     Hnm4VideoContext *hnm = avctx->priv_data;
@@ -355,7 +355,7 @@ static void decode_interframe_v4a(AVCodecContext *avctx, const uint8_t *src,
     }
 }
 
-static void hnm_update_palette(AVCodecContext *avctx, const uint8_t *src,
+static void hnm_update_palette(AVCodecContext *avctx, uint8_t *src,
                                uint32_t size)
 {
     Hnm4VideoContext *hnm = avctx->priv_data;
@@ -388,9 +388,10 @@ static void hnm_update_palette(AVCodecContext *avctx, const uint8_t *src,
     }
 }
 
-static int hnm_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int hnm_decode_frame(AVCodecContext *avctx, void *data,
                             int *got_frame, AVPacket *avpkt)
 {
+    AVFrame *frame = data;
     Hnm4VideoContext *hnm = avctx->priv_data;
     int ret;
     uint16_t chunk_id;
@@ -505,7 +506,7 @@ const FFCodec ff_hnm4_video_decoder = {
     .priv_data_size = sizeof(Hnm4VideoContext),
     .init           = hnm_decode_init,
     .close          = hnm_decode_end,
-    FF_CODEC_DECODE_CB(hnm_decode_frame),
+    .decode         = hnm_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

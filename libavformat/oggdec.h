@@ -26,6 +26,7 @@
 #define AVFORMAT_OGGDEC_H
 
 #include "avformat.h"
+#include "metadata.h"
 
 struct ogg_codec {
     const int8_t *magic;

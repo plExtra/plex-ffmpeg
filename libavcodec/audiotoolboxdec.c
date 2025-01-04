@@ -32,6 +32,7 @@
 #include "mpegaudiodecheader.h"
 #include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/crc.h"
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
 
@@ -60,7 +61,16 @@ static UInt32 ffat_get_format_id(enum AVCodecID codec, int profile)
 {
     switch (codec) {
     case AV_CODEC_ID_AAC:
-        return kAudioFormatMPEG4AAC;
+        if (profile == FF_PROFILE_AAC_HE)
+            return kAudioFormatMPEG4AAC_HE;
+        else if (profile == FF_PROFILE_AAC_HE_V2)
+            return kAudioFormatMPEG4AAC_HE_V2;
+        else if (profile == FF_PROFILE_AAC_LD)
+            return kAudioFormatMPEG4AAC_LD;
+        else if (profile == FF_PROFILE_AAC_ELD)
+            return kAudioFormatMPEG4AAC_ELD;
+        else
+            return kAudioFormatMPEG4AAC;
     case AV_CODEC_ID_AC3:
         return kAudioFormatAC3;
     case AV_CODEC_ID_ADPCM_IMA_QT:
@@ -104,7 +114,7 @@ static int ffat_get_channel_id(AudioChannelLabel label)
     else if (label <= kAudioChannelLabel_RightSurround)
         return label + 4;
     else if (label <= kAudioChannelLabel_CenterSurround)
-        return label + 1;
+        return label - 1;
     else if (label <= kAudioChannelLabel_RightSurroundDirect)
         return label + 23;
     else if (label <= kAudioChannelLabel_TopBackRight)
@@ -166,6 +176,13 @@ static int ffat_update_ctx(AVCodecContext *avctx)
     if (!AudioConverterGetProperty(at->converter,
                                    kAudioConverterCurrentInputStreamDescription,
                                    &size, &format)) {
+        if (avctx->codec_id == AV_CODEC_ID_AAC) {
+            if ((avctx->profile == FF_PROFILE_AAC_HE || avctx->profile == FF_PROFILE_AAC_HE_V2) &&
+                avctx->sample_rate == format.mSampleRate * 2)
+                format.mSampleRate = avctx->sample_rate;
+            if (avctx->profile == FF_PROFILE_AAC_HE_V2)
+                format.mChannelsPerFrame = 2;
+        }
         if (format.mSampleRate)
             avctx->sample_rate = format.mSampleRate;
         av_channel_layout_uninit(&avctx->ch_layout);
@@ -337,6 +354,18 @@ static av_cold int ffat_create_decoder(AVCodecContext *avctx,
             av_log(avctx, AV_LOG_ERROR, "AudioToolbox header-parse error: %i\n", (int)status);
             return AVERROR_UNKNOWN;
         }
+
+        if (avctx->codec_id == AV_CODEC_ID_AAC) {
+            if ((avctx->profile == FF_PROFILE_AAC_HE || avctx->profile == FF_PROFILE_AAC_HE_V2) &&
+                avctx->sample_rate == in_format.mSampleRate * 2) {
+                in_format.mSampleRate = avctx->sample_rate;
+                in_format.mFramesPerPacket *= 2;
+            }
+            if (avctx->profile == FF_PROFILE_AAC_HE_V2)
+                in_format.mChannelsPerFrame = 2;
+
+            in_format.mFormatID = ffat_get_format_id(avctx->codec_id, avctx->profile);
+        }
 #if CONFIG_MP1_AT_DECODER || CONFIG_MP2_AT_DECODER || CONFIG_MP3_AT_DECODER
     } else if (pkt && pkt->size >= 4 &&
                (avctx->codec_id == AV_CODEC_ID_MP1 ||
@@ -375,10 +404,8 @@ static av_cold int ffat_create_decoder(AVCodecContext *avctx,
     avctx->ch_layout.order       = AV_CHANNEL_ORDER_UNSPEC;
     avctx->ch_layout.nb_channels = out_format.mChannelsPerFrame = in_format.mChannelsPerFrame;
 
-    out_format.mBytesPerFrame =
-        out_format.mChannelsPerFrame * (out_format.mBitsPerChannel / 8);
-    out_format.mBytesPerPacket =
-        out_format.mBytesPerFrame * out_format.mFramesPerPacket;
+    out_format.mBytesPerFrame = (out_format.mBitsPerChannel * out_format.mChannelsPerFrame) / 8;
+    out_format.mBytesPerPacket = out_format.mBytesPerFrame * out_format.mFramesPerPacket;
 
     if (avctx->codec_id == AV_CODEC_ID_ADPCM_IMA_QT)
         in_format.mFramesPerPacket = 64;
@@ -418,10 +445,7 @@ static av_cold int ffat_init_decoder(AVCodecContext *avctx)
         memcpy(at->extradata, avctx->extradata, avctx->extradata_size);
     }
 
-    if ((avctx->ch_layout.nb_channels && avctx->sample_rate) || ffat_usable_extradata(avctx))
-        return ffat_create_decoder(avctx, NULL);
-    else
-        return 0;
+    return 0;
 }
 
 static OSStatus ffat_decode_callback(AudioConverterRef converter, UInt32 *nb_packets,
@@ -483,10 +507,11 @@ static void ffat_copy_samples(AVCodecContext *avctx, AVFrame *frame)
     }
 }
 
-static int ffat_decode(AVCodecContext *avctx, AVFrame *frame,
+static int ffat_decode(AVCodecContext *avctx, void *data,
                        int *got_frame_ptr, AVPacket *avpkt)
 {
     ATDecodeContext *at = avctx->priv_data;
+    AVFrame *frame = data;
     int pkt_size = avpkt->size;
     OSStatus ret;
     AudioBufferList out_buffers;
@@ -541,8 +566,33 @@ static int ffat_decode(AVCodecContext *avctx, AVFrame *frame,
 
     out_buffers.mBuffers[0].mData = at->decoded_data;
 
-    ret = AudioConverterFillComplexBuffer(at->converter, ffat_decode_callback, avctx,
-                                          &frame->nb_samples, &out_buffers, NULL);
+#if CONFIG_AC3_AT_DECODER || CONFIG_EAC3_AT_DECODER
+    if (at->new_in_pkt.size >= 7 &&
+        (avctx->codec_id == AV_CODEC_ID_AC3 ||
+         avctx->codec_id == AV_CODEC_ID_EAC3)) {
+        AC3HeaderInfo hdr;
+        GetBitContext gbc;
+        init_get_bits(&gbc, avpkt->data, avpkt->size);
+        if (ff_ac3_parse_header(&gbc, &hdr) < 0) {
+            ret = AVERROR_INVALIDDATA;
+        } else {
+            if (avpkt->size > hdr.frame_size) {
+                av_log(avctx, AV_LOG_WARNING, "Packet size %i > frame size %i; correcting\n",
+                       avpkt->size, hdr.frame_size);
+                at->new_in_pkt.size = hdr.frame_size;
+            }
+            /* check for crc mismatch */
+            if (av_crc(av_crc_get_table(AV_CRC_16_ANSI), 0, avpkt->data + 2,
+                       at->new_in_pkt.size - 2)) {
+                ret = AVERROR_INVALIDDATA;
+            }
+        }
+    }
+#endif
+
+    if (ret >= 0)
+        ret = AudioConverterFillComplexBuffer(at->converter, ffat_decode_callback, avctx,
+                                              &frame->nb_samples, &out_buffers, NULL);
     if ((!ret || ret == 1) && frame->nb_samples) {
         if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
             return ret;
@@ -597,7 +647,7 @@ static av_cold int ffat_close_decoder(AVCodecContext *avctx)
         .priv_data_size = sizeof(ATDecodeContext), \
         .init           = ffat_init_decoder, \
         .close          = ffat_close_decoder, \
-        FF_CODEC_DECODE_CB(ffat_decode), \
+        .decode         = ffat_decode, \
         .flush          = ffat_decode_flush, \
         .p.priv_class   = &ffat_##NAME##_dec_class, \
         .bsfs           = bsf_name, \

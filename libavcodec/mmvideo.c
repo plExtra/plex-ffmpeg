@@ -186,8 +186,9 @@ static int mm_decode_inter(MmContext * s, int half_horiz, int half_vert)
     return 0;
 }
 
-static int mm_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
-                           int *got_frame, AVPacket *avpkt)
+static int mm_decode_frame(AVCodecContext *avctx,
+                            void *data, int *got_frame,
+                            AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
@@ -221,7 +222,7 @@ static int mm_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 
     memcpy(s->frame->data[1], s->palette, AVPALETTE_SIZE);
 
-    if ((res = av_frame_ref(rframe, s->frame)) < 0)
+    if ((res = av_frame_ref(data, s->frame)) < 0)
         return res;
 
     *got_frame      = 1;
@@ -246,7 +247,7 @@ const FFCodec ff_mmvideo_decoder = {
     .priv_data_size = sizeof(MmContext),
     .init           = mm_decode_init,
     .close          = mm_decode_end,
-    FF_CODEC_DECODE_CB(mm_decode_frame),
+    .decode         = mm_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

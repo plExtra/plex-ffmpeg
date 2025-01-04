@@ -237,7 +237,7 @@ static void build_filter(int16_t table[DST_MAX_ELEMENTS][16][256], const Table *
     }
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame_ptr, AVPacket *avpkt)
 {
     unsigned samples_per_frame = DST_SAMPLES_PER_FRAME(avctx->sample_rate);
@@ -249,6 +249,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     DSTContext *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
     ArithCoder *ac = &s->ac;
+    AVFrame *frame = data;
     uint8_t *dsd;
     float *pcm;
     int ret;
@@ -386,7 +387,7 @@ const FFCodec ff_dst_decoder = {
     .p.id           = AV_CODEC_ID_DST,
     .priv_data_size = sizeof(DSTContext),
     .init           = decode_init,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLT,
                                                       AV_SAMPLE_FMT_NONE },

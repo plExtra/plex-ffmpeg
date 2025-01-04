@@ -1150,9 +1150,9 @@ static int config_input(AVFilterLink *inlink)
         av_assert0(0);
     }
 
-#if ARCH_X86
-    ff_lut3d_init_x86(lut3d, desc);
-#endif
+    if (ARCH_X86) {
+        ff_lut3d_init_x86(lut3d, desc);
+    }
 
     return 0;
 }
@@ -1218,11 +1218,6 @@ static const AVOption lut3d_haldclut_options[] = {
 #if CONFIG_LUT3D_FILTER
     { "file", "set 3D LUT file name", OFFSET(file), AV_OPT_TYPE_STRING, {.str=NULL}, .flags = FLAGS },
 #endif
-#if CONFIG_HALDCLUT_FILTER
-    { "clut", "when to process CLUT", OFFSET(clut), AV_OPT_TYPE_INT, {.i64=1}, 0, 1, .flags = TFLAGS, "clut" },
-    {   "first", "process only first CLUT, ignore rest", 0, AV_OPT_TYPE_CONST, {.i64=0}, .flags = TFLAGS, "clut" },
-    {   "all",   "process all CLUTs",                    0, AV_OPT_TYPE_CONST, {.i64=1}, .flags = TFLAGS, "clut" },
-#endif
     COMMON_OPTIONS
 };
 
@@ -1243,7 +1238,7 @@ static av_cold int lut3d_init(AVFilterContext *ctx)
         return set_identity_matrix(ctx, 32);
     }
 
-    f = avpriv_fopen_utf8(lut3d->file, "r");
+    f = av_fopen_utf8(lut3d->file, "r");
     if (!f) {
         ret = AVERROR(errno);
         av_log(ctx, AV_LOG_ERROR, "%s: %s\n", lut3d->file, av_err2str(ret));
@@ -1524,15 +1519,12 @@ static int update_apply_clut(FFFrameSync *fs)
         return ret;
     if (!second)
         return ff_filter_frame(ctx->outputs[0], master);
-    if (lut3d->clut || !lut3d->got_clut) {
-        if (lut3d->clut_float)
-            update_clut_float(ctx->priv, second);
-        else if (lut3d->clut_planar)
-            update_clut_planar(ctx->priv, second);
-        else
-            update_clut_packed(ctx->priv, second);
-        lut3d->got_clut = 1;
-    }
+    if (lut3d->clut_float)
+        update_clut_float(ctx->priv, second);
+    else if (lut3d->clut_planar)
+        update_clut_planar(ctx->priv, second);
+    else
+        update_clut_packed(ctx->priv, second);
     out = apply_lut(inlink, master);
     return ff_filter_frame(ctx->outputs[0], out);
 }
@@ -2134,7 +2126,7 @@ static av_cold int lut1d_init(AVFilterContext *ctx)
         return 0;
     }
 
-    f = avpriv_fopen_utf8(lut1d->file, "r");
+    f = av_fopen_utf8(lut1d->file, "r");
     if (!f) {
         ret = AVERROR(errno);
         av_log(ctx, AV_LOG_ERROR, "%s: %s\n", lut1d->file, av_err2str(ret));

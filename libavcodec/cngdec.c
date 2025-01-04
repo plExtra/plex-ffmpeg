@@ -102,9 +102,10 @@ static void cng_decode_flush(AVCodecContext *avctx)
     p->inited = 0;
 }
 
-static int cng_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int cng_decode_frame(AVCodecContext *avctx, void *data,
                             int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame = data;
     CNGContext *p = avctx->priv_data;
     int buf_size  = avpkt->size;
     int ret, i;
@@ -169,7 +170,7 @@ const FFCodec ff_comfortnoise_decoder = {
     .p.id           = AV_CODEC_ID_COMFORT_NOISE,
     .priv_data_size = sizeof(CNGContext),
     .init           = cng_decode_init,
-    FF_CODEC_DECODE_CB(cng_decode_frame),
+    .decode         = cng_decode_frame,
     .flush          = cng_decode_flush,
     .close          = cng_decode_close,
     .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,

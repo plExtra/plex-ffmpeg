@@ -20,6 +20,7 @@
 
 #include <string.h>
 
+#include "avassert.h"
 #include "avstring.h"
 #include "dict.h"
 #include "internal.h"
@@ -35,6 +36,24 @@ struct AVDictionary {
 int av_dict_count(const AVDictionary *m)
 {
     return m ? m->count : 0;
+}
+
+const AVDictionaryEntry *av_dict_iterate(const AVDictionary *m,
+                                         const AVDictionaryEntry *prev)
+{
+    int i = 0;
+
+    if (!m)
+        return NULL;
+
+    if (prev)
+        i = prev - m->elems + 1;
+
+    av_assert2(i >= 0);
+    if (i >= m->count)
+        return NULL;
+
+    return &m->elems[i];
 }
 
 AVDictionaryEntry *av_dict_get(const AVDictionary *m, const char *key,
@@ -76,6 +95,17 @@ int av_dict_set(AVDictionary **pm, const char *key, const char *value,
 
     if (!(flags & AV_DICT_MULTIKEY)) {
         tag = av_dict_get(m, key, NULL, flags);
+    } else if (flags & AV_DICT_DEDUP) {
+        while ((tag = av_dict_get(m, key, tag, flags))) {
+            if ((!value && !tag->value) ||
+                (value && tag->value && !strcmp(value, tag->value))) {
+                if (flags & AV_DICT_DONT_STRDUP_KEY)
+                    av_free((void*)key);
+                if (flags & AV_DICT_DONT_STRDUP_VAL)
+                    av_free((void*)value);
+                return 0;
+            }
+        }
     }
     if (flags & AV_DICT_DONT_STRDUP_KEY)
         copy_key = (void *)key;

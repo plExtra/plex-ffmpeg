@@ -80,10 +80,11 @@ static av_cold int hcom_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int hcom_decode(AVCodecContext *avctx, AVFrame *frame,
+static int hcom_decode(AVCodecContext *avctx, void *data,
                        int *got_frame, AVPacket *pkt)
 {
     HCOMContext *s = avctx->priv_data;
+    AVFrame *frame = data;
     GetBitContext gb;
     int ret, n = 0;
 
@@ -142,7 +143,7 @@ const FFCodec ff_hcom_decoder = {
     .priv_data_size = sizeof(HCOMContext),
     .init           = hcom_init,
     .close          = hcom_close,
-    FF_CODEC_DECODE_CB(hcom_decode),
+    .decode         = hcom_decode,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

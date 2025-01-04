@@ -52,6 +52,7 @@
 #include "ac3dec.h"
 #include "codec_internal.h"
 
+#include "config_components.h"
 
 static const int end_freq_inv_tab[8] =
 {
@@ -151,7 +152,9 @@ static void ac3_downmix_c_fixed16(int16_t **samples, int16_t **matrix,
     }
 }
 
+#if CONFIG_EAC3_DECODER
 #include "eac3dec.c"
+#endif
 #include "ac3dec.c"
 
 static const AVOption options[] = {
@@ -178,7 +181,7 @@ const FFCodec ff_ac3_fixed_decoder = {
     .priv_data_size = sizeof (AC3DecodeContext),
     .init           = ac3_decode_init,
     .close          = ac3_decode_end,
-    FF_CODEC_DECODE_CB(ac3_decode_frame),
+    .decode         = ac3_decode_frame,
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,

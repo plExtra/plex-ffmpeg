@@ -78,8 +78,9 @@ static av_cold int aasc_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int aasc_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
-                             int *got_frame, AVPacket *avpkt)
+static int aasc_decode_frame(AVCodecContext *avctx,
+                              void *data, int *got_frame,
+                              AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
@@ -104,25 +105,25 @@ static int aasc_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
         ff_msrle_decode(avctx, s->frame, 8, &s->gb);
         break;
     case MKTAG('A', 'A', 'S', 'C'):
-        switch (compr) {
-        case 0:
-            stride = (avctx->width * psize + psize) & ~psize;
-            if (buf_size < stride * avctx->height)
-                return AVERROR_INVALIDDATA;
-            for (i = avctx->height - 1; i >= 0; i--) {
-                memcpy(s->frame->data[0] + i * s->frame->linesize[0], buf, avctx->width * psize);
-                buf += stride;
-                buf_size -= stride;
-            }
-            break;
-        case 1:
-            bytestream2_init(&s->gb, buf, buf_size);
-            ff_msrle_decode(avctx, s->frame, 8, &s->gb);
-            break;
-        default:
-            av_log(avctx, AV_LOG_ERROR, "Unknown compression type %d\n", compr);
+    switch (compr) {
+    case 0:
+        stride = (avctx->width * psize + psize) & ~psize;
+        if (buf_size < stride * avctx->height)
             return AVERROR_INVALIDDATA;
+        for (i = avctx->height - 1; i >= 0; i--) {
+            memcpy(s->frame->data[0] + i * s->frame->linesize[0], buf, avctx->width * psize);
+            buf += stride;
+            buf_size -= stride;
         }
+        break;
+    case 1:
+        bytestream2_init(&s->gb, buf, buf_size);
+        ff_msrle_decode(avctx, s->frame, 8, &s->gb);
+        break;
+    default:
+        av_log(avctx, AV_LOG_ERROR, "Unknown compression type %d\n", compr);
+        return AVERROR_INVALIDDATA;
+    }
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Unknown FourCC: %X\n", avctx->codec_tag);
@@ -133,7 +134,7 @@ static int aasc_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
         memcpy(s->frame->data[1], s->palette, s->palette_size);
 
     *got_frame = 1;
-    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
+    if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
 
     /* report that the buffer was completely consumed */
@@ -157,7 +158,7 @@ const FFCodec ff_aasc_decoder = {
     .priv_data_size = sizeof(AascContext),
     .init           = aasc_decode_init,
     .close          = aasc_decode_end,
-    FF_CODEC_DECODE_CB(aasc_decode_frame),
+    .decode         = aasc_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

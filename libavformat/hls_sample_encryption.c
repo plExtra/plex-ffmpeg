@@ -26,14 +26,12 @@
  * https://developer.apple.com/library/ios/documentation/AudioVideo/Conceptual/HLS_Sample_Encryption
  */
 
-#include "libavutil/aes.h"
 #include "libavutil/channel_layout.h"
 
 #include "hls_sample_encryption.h"
 
 #include "libavcodec/adts_header.h"
 #include "libavcodec/adts_parser.h"
-#include "libavcodec/ac3tab.h"
 #include "libavcodec/ac3_parser_internal.h"
 
 

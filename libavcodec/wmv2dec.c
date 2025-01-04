@@ -20,6 +20,8 @@
 
 #include "libavutil/mem_internal.h"
 
+#include "config_components.h"
+
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "h263dec.h"
@@ -561,6 +563,7 @@ int ff_wmv2_decode_mb(MpegEncContext *s, int16_t block[6][64])
     return 0;
 }
 
+#if CONFIG_WMV2_DECODER
 static av_cold int wmv2_decode_init(AVCodecContext *avctx)
 {
     WMV2DecContext *const w = avctx->priv_data;
@@ -599,9 +602,10 @@ const FFCodec ff_wmv2_decoder = {
     .priv_data_size = sizeof(WMV2DecContext),
     .init           = wmv2_decode_init,
     .close          = wmv2_decode_end,
-    FF_CODEC_DECODE_CB(ff_h263_decode_frame),
+    .decode         = ff_h263_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P,
                                                      AV_PIX_FMT_NONE },
 };
+#endif

@@ -20,7 +20,6 @@ HEADERS = adler32.h                                                     \
           common.h                                                      \
           cpu.h                                                         \
           crc.h                                                         \
-          csp.h                                                         \
           des.h                                                         \
           detection_bbox.h                                              \
           dict.h                                                        \
@@ -90,6 +89,8 @@ HEADERS = adler32.h                                                     \
           tea.h                                                         \
           tx.h                                                          \
           film_grain_params.h                                           \
+          extlib.h                                                      \
+#^PLEX
 
 ARCH_HEADERS = bswap.h                                                  \
                intmath.h                                                \
@@ -115,7 +116,6 @@ OBJS = adler32.o                                                        \
        color_utils.o                                                    \
        cpu.o                                                            \
        crc.o                                                            \
-       csp.o                                                            \
        des.o                                                            \
        detection_bbox.o                                                 \
        dict.o                                                           \
@@ -125,6 +125,7 @@ OBJS = adler32.o                                                        \
        encryption_info.o                                                \
        error.o                                                          \
        eval.o                                                           \
+       extloader.o                                                      \
        fifo.o                                                           \
        file.o                                                           \
        file_open.o                                                      \
@@ -196,8 +197,6 @@ OBJS-$(CONFIG_VIDEOTOOLBOX)             += hwcontext_videotoolbox.o
 OBJS-$(CONFIG_VDPAU)                    += hwcontext_vdpau.o
 OBJS-$(CONFIG_VULKAN)                   += hwcontext_vulkan.o
 
-OBJS-$(!CONFIG_VULKAN)                  += hwcontext_stub.o
-
 OBJS += $(COMPAT_OBJS:%=../compat/%)
 
 # Windows resource file
@@ -265,7 +264,6 @@ TESTPROGS = adler32                                                     \
             tree                                                        \
             twofish                                                     \
             utf8                                                        \
-            uuid                                                        \
             xtea                                                        \
             tea                                                         \
 

@@ -32,7 +32,9 @@
 #include "avio_internal.h"
 #include "internal.h"
 #include "url.h"
+#include <fcntl.h>
 #include <stdarg.h>
+#include <unistd.h>
 
 #define IO_BUFFER_SIZE 32768
 
@@ -61,6 +63,7 @@ static const AVClass *child_class_iterate(void **iter)
 #define D AV_OPT_FLAG_DECODING_PARAM
 static const AVOption ff_avio_options[] = {
     {"protocol_whitelist", "List of protocols that are allowed to be used", OFFSET(protocol_whitelist), AV_OPT_TYPE_STRING, { .str = NULL },  0, 0, D },
+    {"trace_file", "Append all data read or written to this file", OFFSET(trace_file), AV_OPT_TYPE_STRING, { .str = NULL },  0, 0, D },
     { NULL },
 };
 
@@ -110,6 +113,7 @@ void ffio_init_context(FFIOContext *ctx,
     s->seekable        = seek ? AVIO_SEEKABLE_NORMAL : 0;
     s->min_packet_size = 0;
     s->max_packet_size = 0;
+    s->trace_fd = -1;
     s->update_checksum = NULL;
     ctx->short_seek_threshold = SHORT_SEEK_THRESHOLD;
 
@@ -531,6 +535,12 @@ static int read_packet_wrapper(AVIOContext *s, uint8_t *buf, int size)
     if (!s->read_packet)
         return AVERROR(EINVAL);
     ret = s->read_packet(s->opaque, buf, size);
+    if (s->trace_file && ret > 0) {
+        if (s->trace_fd < 0)
+            s->trace_fd = avpriv_open(s->trace_file, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (s->trace_fd >= 0)
+            write(s->trace_fd, buf, ret);
+    }
     av_assert2(ret || s->max_packet_size);
     return ret;
 }
@@ -1023,7 +1033,7 @@ URLContext* ffio_geturlcontext(AVIOContext *s)
 int ffio_copy_url_options(AVIOContext* pb, AVDictionary** avio_opts)
 {
     const char *opts[] = {
-        "headers", "user_agent", "cookies", "http_proxy", "referer", "rw_timeout", "icy", NULL };
+        "headers", "user_agent", "cookies", "http_proxy", "referer", "rw_timeout", "icy", "tls_verify", "cafile", "ca_file", "resolve_hosts", NULL };
     const char **opt = opts;
     uint8_t *buf = NULL;
     int ret = 0;
@@ -1061,9 +1071,6 @@ int ffio_ensure_seekback(AVIOContext *s, int64_t buf_size)
 
     if (buf_size <= s->buf_end - s->buf_ptr)
         return 0;
-
-    if (buf_size > INT_MAX - max_buffer_size)
-        return AVERROR(EINVAL);
 
     buf_size += max_buffer_size - 1;
 
@@ -1240,9 +1247,14 @@ int ffio_open_whitelist(AVIOContext **s, const char *filename, int flags,
         return err;
     err = ffio_fdopen(s, h);
     if (err < 0) {
+fail:
         ffurl_close(h);
         return err;
     }
+
+    if ((err = av_opt_set_dict(*s, options)) < 0)
+        goto fail;
+
     return 0;
 }
 
@@ -1264,6 +1276,9 @@ int avio_close(AVIOContext *s)
     avio_flush(s);
     h         = s->opaque;
     s->opaque = NULL;
+
+    if (s->trace_fd >= 0)
+        close(s->trace_fd);
 
     av_freep(&s->buffer);
     if (s->write_flag)
@@ -1292,12 +1307,15 @@ int avio_closep(AVIOContext **s)
     return ret;
 }
 
-int avio_vprintf(AVIOContext *s, const char *fmt, va_list ap)
+int avio_printf(AVIOContext *s, const char *fmt, ...)
 {
+    va_list ap;
     AVBPrint bp;
 
     av_bprint_init(&bp, 0, INT_MAX);
+    va_start(ap, fmt);
     av_vbprintf(&bp, fmt, ap);
+    va_end(ap);
     if (!av_bprint_is_complete(&bp)) {
         av_bprint_finalize(&bp, NULL);
         s->error = AVERROR(ENOMEM);
@@ -1306,18 +1324,6 @@ int avio_vprintf(AVIOContext *s, const char *fmt, va_list ap)
     avio_write(s, bp.str, bp.len);
     av_bprint_finalize(&bp, NULL);
     return bp.len;
-}
-
-int avio_printf(AVIOContext *s, const char *fmt, ...)
-{
-    va_list ap;
-    int ret;
-
-    va_start(ap, fmt);
-    ret = avio_vprintf(s, fmt, ap);
-    va_end(ap);
-
-    return ret;
 }
 
 void avio_print_string_array(AVIOContext *s, const char *strings[])

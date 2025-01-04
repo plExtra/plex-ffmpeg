@@ -1418,9 +1418,8 @@ static int config_output(AVFilterLink *outlink)
         s->update_sono = update_sono_yuv;
     }
 
-#if ARCH_X86
-    ff_showcqt_init_x86(s);
-#endif
+    if (ARCH_X86)
+        ff_showcqt_init_x86(s);
 
     if ((ret = init_cqt(s)) < 0)
         return ret;

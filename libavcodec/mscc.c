@@ -129,12 +129,14 @@ static int rle_uncompress(AVCodecContext *avctx, GetByteContext *gb, PutByteCont
     return AVERROR_INVALIDDATA;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx,
+                        void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     MSCCContext *s = avctx->priv_data;
     z_stream *const zstream = &s->zstream.zstream;
-    const uint8_t *buf = avpkt->data;
+    AVFrame *frame = data;
+    uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     GetByteContext gb;
     PutByteContext pb;
@@ -145,6 +147,12 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
+
+    if (avctx->codec_id == AV_CODEC_ID_MSCC) {
+        avpkt->data[2] ^= avpkt->data[0];
+        buf += 2;
+        buf_size -= 2;
+    }
 
     if (avctx->pix_fmt == AV_PIX_FMT_PAL8) {
         size_t size;
@@ -166,25 +174,12 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         av_log(avctx, AV_LOG_ERROR, "Inflate reset error: %d\n", ret);
         return AVERROR_UNKNOWN;
     }
-    zstream->next_out  = s->decomp_buf;
-    zstream->avail_out = s->decomp_size;
-    if (avctx->codec_id == AV_CODEC_ID_MSCC) {
-        const uint8_t start = avpkt->data[2] ^ avpkt->data[0];
-
-        zstream->next_in  = &start;
-        zstream->avail_in = 1;
-        ret = inflate(zstream, Z_NO_FLUSH);
-        if (ret != Z_OK || zstream->avail_in != 0)
-            goto inflate_error;
-
-        buf      += 3;
-        buf_size -= 3;
-    }
     zstream->next_in   = buf;
     zstream->avail_in  = buf_size;
+    zstream->next_out  = s->decomp_buf;
+    zstream->avail_out = s->decomp_size;
     ret = inflate(zstream, Z_FINISH);
     if (ret != Z_STREAM_END) {
-inflate_error:
         av_log(avctx, AV_LOG_ERROR, "Inflate error: %d\n", ret);
         return AVERROR_UNKNOWN;
     }
@@ -259,7 +254,7 @@ const FFCodec ff_mscc_decoder = {
     .priv_data_size   = sizeof(MSCCContext),
     .init             = decode_init,
     .close            = decode_close,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode           = decode_frame,
     .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
@@ -272,7 +267,7 @@ const FFCodec ff_srgc_decoder = {
     .priv_data_size   = sizeof(MSCCContext),
     .init             = decode_init,
     .close            = decode_close,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode           = decode_frame,
     .p.capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };

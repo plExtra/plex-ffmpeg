@@ -108,8 +108,9 @@ exhausted:
     return 1;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx,
+                        void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     AnmContext *s = avctx->priv_data;
     const int buf_size = avpkt->size;
@@ -175,7 +176,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     memcpy(s->frame->data[1], s->palette, AVPALETTE_SIZE);
 
     *got_frame = 1;
-    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
+    if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
 
     return buf_size;
@@ -197,7 +198,7 @@ const FFCodec ff_anm_decoder = {
     .priv_data_size = sizeof(AnmContext),
     .init           = decode_init,
     .close          = decode_end,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

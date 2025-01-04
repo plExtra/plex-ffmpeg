@@ -26,6 +26,8 @@
  * VC-1 and WMV3 decoder common code
  */
 
+#include "config_components.h"
+
 #include "libavutil/attributes.h"
 #include "libavutil/thread.h"
 #include "internal.h"
@@ -1584,7 +1586,7 @@ static const uint16_t vlc_offs[] = {
 
 static av_cold void vc1_init_static(void)
 {
-    static VLCElem vlc_table[32372];
+    static VLC_TYPE vlc_table[32372][2];
 
     INIT_VLC_STATIC(&ff_vc1_bfraction_vlc, VC1_BFRACTION_VLC_BITS, 23,
                     ff_vc1_bfraction_bits,  1, 1,
@@ -1707,7 +1709,9 @@ av_cold void ff_vc1_init_common(VC1Context *v)
     v->pq      = -1;
     v->mvrange = 0; /* 7.1.1.18, p80 */
 
+#if CONFIG_VC1_DECODER
     ff_vc1dsp_init(&v->vc1dsp);
+#endif
 
     /* VLC tables */
     ff_thread_once(&init_static_once, vc1_init_static);

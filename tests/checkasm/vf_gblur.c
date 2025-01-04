@@ -19,7 +19,7 @@
 #include <float.h>
 #include <string.h>
 #include "checkasm.h"
-#include "libavfilter/vf_gblur_init.h"
+#include "libavfilter/gblur.h"
 
 #define WIDTH 256
 #define HEIGHT 256

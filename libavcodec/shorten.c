@@ -522,9 +522,10 @@ end:
     return 0;
 }
 
-static int shorten_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int shorten_decode_frame(AVCodecContext *avctx, void *data,
                                 int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     ShortenContext *s  = avctx->priv_data;
@@ -811,7 +812,7 @@ const FFCodec ff_shorten_decoder = {
     .priv_data_size = sizeof(ShortenContext),
     .init           = shorten_decode_init,
     .close          = shorten_decode_close,
-    FF_CODEC_DECODE_CB(shorten_decode_frame),
+    .decode         = shorten_decode_frame,
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DELAY |
                       AV_CODEC_CAP_DR1 |

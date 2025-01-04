@@ -114,7 +114,7 @@ static int clean_layout(AVChannelLayout *out, const AVChannelLayout *in, void *s
 {
     int ret = 0;
 
-    if (av_channel_layout_index_from_channel(in, AV_CHAN_FRONT_CENTER) < 0 && in->nb_channels == 1) {
+    if(av_channel_layout_index_from_channel(in, AV_CH_FRONT_CENTER) < 0 && in->nb_channels == 1) {
         char buf[128];
         av_channel_layout_describe(in, buf, sizeof(buf));
         av_log(s, AV_LOG_VERBOSE, "Treating %s as mono\n", buf);
@@ -565,9 +565,8 @@ av_cold int swri_rematrix_init(SwrContext *s){
         s->matrix_ch[i][0]= ch_in;
     }
 
-#if ARCH_X86 && HAVE_X86ASM && HAVE_MMX
-    return swri_rematrix_init_x86(s);
-#endif
+    if(HAVE_X86ASM && HAVE_MMX)
+        return swri_rematrix_init_x86(s);
 
     return 0;
 }

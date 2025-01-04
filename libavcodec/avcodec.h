@@ -1518,6 +1518,7 @@ typedef struct AVCodecContext {
      * It will return only after finishing all tasks.
      * The user may replace this with some multithreaded implementation,
      * the default implementation will execute the parts serially.
+     * Also see avcodec_thread_init and e.g. the --enable-pthread configure option.
      * @param c context passed also to func
      * @param count the number of things to execute
      * @param arg2 argument passed unchanged to func
@@ -1820,6 +1821,14 @@ typedef struct AVCodecContext {
      */
     uint16_t *chroma_intra_matrix;
 
+//PLEX
+    /**
+     * Whether or not an H.264 scaling matrix is present
+     * - decoding: Set by h264 decoder
+     */
+    int scaling_matrix_present;
+//PLEX
+
     /**
      * dump format separator.
      * can be ", " or "\n      " or anything else
@@ -1978,6 +1987,10 @@ typedef struct AVCodecContext {
      * used as reference pictures).
      */
     int extra_hw_frames;
+
+//PLEX
+    int separate_fields;
+//PLEX
 
     /**
      * The percentage of damaged samples to discard a frame.
@@ -2167,6 +2180,12 @@ typedef struct AVHWAccel {
     int (*end_frame)(AVCodecContext *avctx);
 
     /**
+     * Can be used to mutate the AVFrame returned to the user in some way. Is
+     * always called on the frame immediately returned to the user.
+     */
+    int (*finish_frame)(AVCodecContext *avctx, AVFrame *frame);
+
+    /**
      * Size of per-frame hardware accelerator private data.
      *
      * Private data is allocated with av_mallocz() before
@@ -2249,6 +2268,22 @@ typedef struct AVHWAccel {
  *          while indicating success.
  */
 #define AV_HWACCEL_FLAG_ALLOW_PROFILE_MISMATCH (1 << 2)
+
+/**
+ * Some hardware decoders (namely nvdec) can either output direct decoder
+ * surfaces, or make an on-device copy and return said copy.
+ * There is a hard limit on how many decoder surfaces there can be, and it
+ * cannot be accurately guessed ahead of time.
+ * For some processing chains, this can be okay, but others will run into the
+ * limit and in turn produce very confusing errors that require fine tuning of
+ * more or less obscure options by the user, or in extreme cases cannot be
+ * resolved at all without inserting an avfilter that forces a copy.
+ *
+ * Thus, the hwaccel will by default make a copy for safety and resilience.
+ * If a users really wants to minimize the amount of copies, they can set this
+ * flag and ensure their processing chain does not exhaust the surface pool.
+ */
+#define AV_HWACCEL_FLAG_UNSAFE_OUTPUT (1 << 3)
 
 /**
  * @}
@@ -2825,6 +2860,8 @@ typedef struct AVCodecParserContext {
 /// Set if the parser has a valid file offset
 #define PARSER_FLAG_FETCHED_OFFSET            0x0004
 #define PARSER_FLAG_USE_CODEC_TS              0x1000
+
+#define PARSER_FLAG_SKIP                      0x800000
 
     int64_t offset;      ///< byte offset from starting packet start
     int64_t cur_frame_end[AV_PARSER_PTS_NB];

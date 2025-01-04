@@ -122,7 +122,6 @@ void ff_celp_math_init(CELPMContext *c)
 {
     c->dot_productf   = ff_dot_productf;
 
-#if HAVE_MIPSFPU
-    ff_celp_math_init_mips(c);
-#endif
+    if(HAVE_MIPSFPU)
+        ff_celp_math_init_mips(c);
 }

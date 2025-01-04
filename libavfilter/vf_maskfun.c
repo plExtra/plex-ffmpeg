@@ -35,15 +35,13 @@ typedef struct MaskFunContext {
     int sum;
 
     int linesize[4];
-    int planewidth[4], planeheight[4];
+    int width[4], height[4];
     int nb_planes;
     int depth;
     int max;
     uint64_t max_sum;
 
-    AVFrame *in;
     AVFrame *empty;
-
     int (*getsum)(AVFilterContext *ctx, AVFrame *out);
     int (*maskfun)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } MaskFunContext;
@@ -83,42 +81,29 @@ static const enum AVPixelFormat pix_fmts[] = {
     AV_PIX_FMT_NONE
 };
 
-static int filter_frame(AVFilterLink *inlink, AVFrame *in)
+static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
     AVFilterContext *ctx = inlink->dst;
     MaskFunContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
-    AVFrame *out;
 
-    if (s->getsum(ctx, in)) {
+    if (s->getsum(ctx, frame)) {
         AVFrame *out = av_frame_clone(s->empty);
 
         if (!out) {
-            av_frame_free(&in);
+            av_frame_free(&frame);
             return AVERROR(ENOMEM);
         }
-        out->pts = in->pts;
-        av_frame_free(&in);
+        out->pts = frame->pts;
+        av_frame_free(&frame);
 
         return ff_filter_frame(outlink, out);
     }
 
-    if (av_frame_is_writable(in)) {
-        out = in;
-    } else {
-        out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
-        if (!out)
-            return AVERROR(ENOMEM);
-        av_frame_copy_props(out, in);
-    }
+    ff_filter_execute(ctx, s->maskfun, frame, NULL,
+                      FFMIN(s->height[1], ff_filter_get_nb_threads(ctx)));
 
-    s->in = in;
-    ff_filter_execute(ctx, s->maskfun, out, NULL,
-                      FFMIN(s->planeheight[1], ff_filter_get_nb_threads(ctx)));
-
-    if (out != in)
-        av_frame_free(&in);
-    return ff_filter_frame(outlink, out);
+    return ff_filter_frame(outlink, frame);
 }
 
 #define GETSUM(name, type, div)                              \
@@ -130,8 +115,8 @@ static int getsum##name(AVFilterContext *ctx, AVFrame *out)  \
                                                              \
     for (p = 0; p < s->nb_planes; p++) {                     \
         const int linesize = out->linesize[p] / div;         \
-        const int w = s->planewidth[p];                      \
-        const int h = s->planeheight[p];                     \
+        const int w = s->width[p];                           \
+        const int h = s->height[p];                          \
         type *dst = (type *)out->data[p];                    \
                                                              \
         if (!((1 << p) & s->planes))                         \
@@ -157,7 +142,6 @@ static int maskfun##name(AVFilterContext *ctx, void *arg,    \
                          int jobnr, int nb_jobs)             \
 {                                                            \
     MaskFunContext *s = ctx->priv;                           \
-    AVFrame *in = s->in;                                     \
     AVFrame *out = arg;                                      \
     const int low = s->low;                                  \
     const int high = s->high;                                \
@@ -165,30 +149,24 @@ static int maskfun##name(AVFilterContext *ctx, void *arg,    \
     int p;                                                   \
                                                              \
     for (p = 0; p < s->nb_planes; p++) {                     \
-        const int src_linesize = in->linesize[p] / div;      \
         const int linesize = out->linesize[p] / div;         \
-        const int w = s->planewidth[p];                      \
-        const int h = s->planeheight[p];                     \
+        const int w = s->width[p];                           \
+        const int h = s->height[p];                          \
         const int slice_start = (h * jobnr) / nb_jobs;       \
         const int slice_end = (h * (jobnr+1)) / nb_jobs;     \
-        const type *src = (type *)in->data[p] +              \
-                           slice_start * src_linesize;       \
-        type *dst = (type *)out->data[p] +                   \
-                    slice_start * linesize;                  \
+        type *dst = (type *)out->data[p] + slice_start * linesize; \
                                                              \
         if (!((1 << p) & s->planes))                         \
             continue;                                        \
                                                              \
         for (int y = slice_start; y < slice_end; y++) {      \
             for (int x = 0; x < w; x++) {                    \
-                dst[x] = src[x];                             \
                 if (dst[x] <= low)                           \
                     dst[x] = 0;                              \
                 else if (dst[x] > high)                      \
                     dst[x] = max;                            \
             }                                                \
                                                              \
-            src += src_linesize;                             \
             dst += linesize;                                 \
         }                                                    \
     }                                                        \
@@ -208,8 +186,8 @@ static void fill_frame(AVFilterContext *ctx)
         for (int p = 0; p < s->nb_planes; p++) {
             uint8_t *dst = s->empty->data[p];
 
-            for (int y = 0; y < s->planeheight[p]; y++) {
-                memset(dst, s->fill, s->planewidth[p]);
+            for (int y = 0; y < s->height[p]; y++) {
+                memset(dst, s->fill, s->width[p]);
                 dst += s->empty->linesize[p];
             }
         }
@@ -217,8 +195,8 @@ static void fill_frame(AVFilterContext *ctx)
         for (int p = 0; p < s->nb_planes; p++) {
             uint16_t *dst = (uint16_t *)s->empty->data[p];
 
-            for (int y = 0; y < s->planeheight[p]; y++) {
-                for (int x = 0; x < s->planewidth[p]; x++)
+            for (int y = 0; y < s->height[p]; y++) {
+                for (int x = 0; x < s->width[p]; x++)
                     dst[x] = s->fill;
                 dst += s->empty->linesize[p] / 2;
             }
@@ -234,7 +212,7 @@ static void set_max_sum(AVFilterContext *ctx)
     for (int p = 0; p < s->nb_planes; p++) {
         if (!((1 << p) & s->planes))
             continue;
-        s->max_sum += (uint64_t)s->sum * s->planewidth[p] * s->planeheight[p];
+        s->max_sum += (uint64_t)s->sum * s->width[p] * s->height[p];
     }
 }
 
@@ -252,10 +230,10 @@ static int config_input(AVFilterLink *inlink)
 
     hsub = desc->log2_chroma_w;
     vsub = desc->log2_chroma_h;
-    s->planeheight[1] = s->planeheight[2] = AV_CEIL_RSHIFT(inlink->h, vsub);
-    s->planeheight[0] = s->planeheight[3] = inlink->h;
-    s->planewidth[1]  = s->planewidth[2]  = AV_CEIL_RSHIFT(inlink->w, hsub);
-    s->planewidth[0]  = s->planewidth[3]  = inlink->w;
+    s->height[1] = s->height[2] = AV_CEIL_RSHIFT(inlink->h, vsub);
+    s->height[0] = s->height[3] = inlink->h;
+    s->width[1]  = s->width[2]  = AV_CEIL_RSHIFT(inlink->w, hsub);
+    s->width[0]  = s->width[3]  = inlink->w;
 
     s->depth = desc->comp[0].depth;
     s->max = (1 << s->depth) - 1;

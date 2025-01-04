@@ -107,10 +107,12 @@ static int targa_decode_rle(AVCodecContext *avctx, TargaContext *s,
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *p,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx,
+                        void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     TargaContext * const s = avctx->priv_data;
+    AVFrame * const p = data;
     uint8_t *dst;
     int stride;
     int idlen, pal, compr, y, w, h, bpp, flags, ret;
@@ -312,5 +314,5 @@ const FFCodec ff_targa_decoder = {
     .p.id           = AV_CODEC_ID_TARGA,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .priv_data_size = sizeof(TargaContext),
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
 };

@@ -154,7 +154,11 @@ static int file_check(URLContext *h, int mask)
             ret |= AVIO_FLAG_WRITE;
 #else
     struct stat st;
+#   ifndef _WIN32
     ret = stat(filename, &st);
+#   else
+    ret = win32_stat(filename, &st);
+#   endif
     if (ret < 0)
         return AVERROR(errno);
 

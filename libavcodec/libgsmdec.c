@@ -82,11 +82,12 @@ static av_cold int libgsm_decode_close(AVCodecContext *avctx) {
     return 0;
 }
 
-static int libgsm_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int libgsm_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
     int i, ret;
     LibGSMDecodeContext *s = avctx->priv_data;
+    AVFrame *frame         = data;
     uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     int16_t *samples;
@@ -135,7 +136,7 @@ const FFCodec ff_libgsm_decoder = {
     .priv_data_size = sizeof(LibGSMDecodeContext),
     .init           = libgsm_decode_init,
     .close          = libgsm_decode_close,
-    FF_CODEC_DECODE_CB(libgsm_decode_frame),
+    .decode         = libgsm_decode_frame,
     .flush          = libgsm_flush,
 };
 #endif
@@ -150,7 +151,7 @@ const FFCodec ff_libgsm_ms_decoder = {
     .priv_data_size = sizeof(LibGSMDecodeContext),
     .init           = libgsm_decode_init,
     .close          = libgsm_decode_close,
-    FF_CODEC_DECODE_CB(libgsm_decode_frame),
+    .decode         = libgsm_decode_frame,
     .flush          = libgsm_flush,
 };
 #endif

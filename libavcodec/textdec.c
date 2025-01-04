@@ -45,11 +45,12 @@ static const AVOption options[] = {
     { NULL }
 };
 
-static int text_decode_frame(AVCodecContext *avctx, AVSubtitle *sub,
-                             int *got_sub_ptr, const AVPacket *avpkt)
+static int text_decode_frame(AVCodecContext *avctx, void *data,
+                             int *got_sub_ptr, AVPacket *avpkt)
 {
     int ret = 0;
     AVBPrint buf;
+    AVSubtitle *sub = data;
     const char *ptr = avpkt->data;
     TextContext *text = avctx->priv_data;
 
@@ -86,7 +87,7 @@ const FFCodec ff_text_decoder = {
     .priv_data_size = sizeof(TextContext),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_TEXT,
-    FF_CODEC_DECODE_SUB_CB(text_decode_frame),
+    .decode         = text_decode_frame,
     .init           = ff_ass_subtitle_header_default,
     .p.priv_class   = &textsub_decoder_class,
     .flush          = text_flush,
@@ -110,7 +111,7 @@ const FFCodec ff_vplayer_decoder = {
     .priv_data_size = sizeof(TextContext),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_VPLAYER,
-    FF_CODEC_DECODE_SUB_CB(text_decode_frame),
+    .decode         = text_decode_frame,
     .init           = linebreak_init,
     .p.priv_class   = &textsub_decoder_class,
     .flush          = text_flush,
@@ -125,7 +126,7 @@ const FFCodec ff_stl_decoder = {
     .priv_data_size = sizeof(TextContext),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_STL,
-    FF_CODEC_DECODE_SUB_CB(text_decode_frame),
+    .decode         = text_decode_frame,
     .init           = linebreak_init,
     .p.priv_class   = &textsub_decoder_class,
     .flush          = text_flush,
@@ -140,7 +141,7 @@ const FFCodec ff_pjs_decoder = {
     .priv_data_size = sizeof(TextContext),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_PJS,
-    FF_CODEC_DECODE_SUB_CB(text_decode_frame),
+    .decode         = text_decode_frame,
     .init           = linebreak_init,
     .p.priv_class   = &textsub_decoder_class,
     .flush          = text_flush,
@@ -155,7 +156,7 @@ const FFCodec ff_subviewer1_decoder = {
     .priv_data_size = sizeof(TextContext),
     .p.type         = AVMEDIA_TYPE_SUBTITLE,
     .p.id           = AV_CODEC_ID_SUBVIEWER1,
-    FF_CODEC_DECODE_SUB_CB(text_decode_frame),
+    .decode         = text_decode_frame,
     .init           = linebreak_init,
     .p.priv_class   = &textsub_decoder_class,
     .flush          = text_flush,

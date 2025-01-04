@@ -39,7 +39,6 @@
 #include "mpegts.h"
 #include "internal.h"
 #include "avio_internal.h"
-#include "demux.h"
 #include "mpeg.h"
 #include "isom.h"
 #if CONFIG_ICONV
@@ -618,7 +617,7 @@ static int get_packet_size(AVFormatContext* s)
     while (buf_size < PROBE_PACKET_MAX_BUF && max_iterations--) {
         ret = avio_read_partial(s->pb, buf + buf_size, PROBE_PACKET_MAX_BUF - buf_size);
         if (ret < 0)
-            return AVERROR_INVALIDDATA;
+            return ret;
         buf_size += ret;
 
         score      = analyze(buf, buf_size, TS_PACKET_SIZE,      0);
@@ -646,7 +645,6 @@ typedef struct SectionHeader {
     uint8_t tid;
     uint16_t id;
     uint8_t version;
-    uint8_t current_next;
     uint8_t sec_num;
     uint8_t last_sec_num;
 } SectionHeader;
@@ -775,7 +773,6 @@ static int parse_section_header(SectionHeader *h,
     if (val < 0)
         return val;
     h->version = (val >> 1) & 0x1f;
-    h->current_next = val & 0x01;
     val = get8(pp, p_end);
     if (val < 0)
         return val;
@@ -978,6 +975,11 @@ static int mpegts_set_stream_info(AVStream *st, PESContext *pes,
         st->codecpar->codec_type = AVMEDIA_TYPE_DATA;
         st->codecpar->codec_id   = AV_CODEC_ID_BIN_DATA;
         sti->request_probe = AVPROBE_SCORE_STREAM_RETRY / 5;
+    }
+    if (st->codecpar->codec_id == AV_CODEC_ID_NONE && stream_type == STREAM_TYPE_PRIVATE_SECTION) {
+        // These don't carry any packet data
+        st->codecpar->codec_type = AVMEDIA_TYPE_DATA;
+        st->codecpar->codec_id   = AV_CODEC_ID_BIN_DATA;
     }
 
     /* queue a context update if properties changed */
@@ -2335,8 +2337,6 @@ static void pmt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
         return;
     if (h->tid != PMT_TID)
         return;
-    if (!h->current_next)
-        return;
     if (skip_identical(h, tssf))
         return;
 
@@ -2546,8 +2546,6 @@ static void pat_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
         return;
     if (h->tid != PAT_TID)
         return;
-    if (!h->current_next)
-        return;
     if (ts->skip_changes)
         return;
 
@@ -2686,8 +2684,6 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
         return;
     if (h->tid != SDT_TID)
         return;
-    if (!h->current_next)
-        return;
     if (ts->skip_changes)
         return;
     if (skip_identical(h, tssf))
@@ -2727,13 +2723,13 @@ static void sdt_cb(MpegTSFilter *filter, const uint8_t *section, int section_len
 
             switch (desc_tag) {
             case 0x48:
-                service_type = get8(&p, desc_end);
+                service_type = get8(&p, p_end);
                 if (service_type < 0)
                     break;
-                provider_name = getstr8(&p, desc_end);
+                provider_name = getstr8(&p, p_end);
                 if (!provider_name)
                     break;
-                name = getstr8(&p, desc_end);
+                name = getstr8(&p, p_end);
                 if (name) {
                     AVProgram *program = av_new_program(ts->stream, sid);
                     if (program) {
@@ -2870,8 +2866,16 @@ static int handle_packet(MpegTSContext *ts, const uint8_t *packet, int64_t pos)
                     break;
             }
             if (i == ts->nb_prg && ts->nb_prg > 0) {
-                av_log(ts->stream, AV_LOG_DEBUG, "All programs have pmt, headers found\n");
-                ts->stream->ctx_flags &= ~AVFMTCTX_NOHEADER;
+                int types = 0;
+                for (i = 0; i < ts->stream->nb_streams; i++) {
+                    AVStream *st = ts->stream->streams[i];
+                    if (st->codecpar->codec_type >= 0)
+                        types |= 1<<st->codecpar->codec_type;
+                }
+                if ((types & (1<<AVMEDIA_TYPE_AUDIO) && types & (1<<AVMEDIA_TYPE_VIDEO)) || pos > 100000) {
+                    av_log(ts->stream, AV_LOG_DEBUG, "All programs have pmt, headers found\n");
+                    ts->stream->ctx_flags &= ~AVFMTCTX_NOHEADER;
+                }
             }
         }
 
@@ -2906,6 +2910,8 @@ static int mpegts_resync(AVFormatContext *s, int seekback, const uint8_t *curren
 
     for (i = 0; i < ts->resync_size; i++) {
         c = avio_r8(pb);
+        if (pb->error)
+            return pb->error;
         if (avio_feof(pb))
             return AVERROR_EOF;
         if (c == 0x47) {
@@ -2939,8 +2945,13 @@ static int read_packet(AVFormatContext *s, uint8_t *buf, int raw_packet_size,
 
     for (;;) {
         len = ffio_read_indirect(pb, buf, TS_PACKET_SIZE, data);
-        if (len != TS_PACKET_SIZE)
-            return len < 0 ? len : AVERROR_EOF;
+        if (len != TS_PACKET_SIZE) {
+            if (len < 0)
+                return len;
+            if (pb->error)
+                return pb->error;
+            return AVERROR_EOF;
+        }
         /* check packet sync byte */
         if ((*data)[0] != 0x47) {
             /* find a new packet start */
@@ -3110,6 +3121,8 @@ static int mpegts_read_header(AVFormatContext *s)
     pos = avio_tell(pb);
     ts->raw_packet_size = get_packet_size(s);
     if (ts->raw_packet_size <= 0) {
+        if (ts->raw_packet_size != AVERROR_INVALIDDATA && ts->raw_packet_size != AVERROR_EOF)
+            return ts->raw_packet_size;
         av_log(s, AV_LOG_WARNING, "Could not detect TS packet size, defaulting to non-FEC/DVHS\n");
         ts->raw_packet_size = TS_PACKET_SIZE;
     }
@@ -3126,7 +3139,7 @@ static int mpegts_read_header(AVFormatContext *s)
         mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
         mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
 
-        handle_packets(ts, probesize / ts->raw_packet_size);
+        handle_packets(ts, 1000); //PLEX: hardcoded low packet count; relying on find_stream_info
         /* if could not find service, enable auto_guess */
 
         ts->auto_guess = 1;

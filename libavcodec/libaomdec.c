@@ -156,10 +156,11 @@ static int set_pix_fmt(AVCodecContext *avctx, struct aom_image *img)
     }
 }
 
-static int aom_decode(AVCodecContext *avctx, AVFrame *picture,
-                      int *got_frame, AVPacket *avpkt)
+static int aom_decode(AVCodecContext *avctx, void *data, int *got_frame,
+                      AVPacket *avpkt)
 {
     AV1DecodeContext *ctx = avctx->priv_data;
+    AVFrame *picture      = data;
     const void *iter      = NULL;
     struct aom_image *img;
     int ret;
@@ -256,7 +257,7 @@ const FFCodec ff_libaom_av1_decoder = {
     .priv_data_size = sizeof(AV1DecodeContext),
     .init           = av1_init,
     .close          = aom_free,
-    FF_CODEC_DECODE_CB(aom_decode),
+    .decode         = aom_decode,
     .p.capabilities = AV_CODEC_CAP_OTHER_THREADS | AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_av1_profiles),

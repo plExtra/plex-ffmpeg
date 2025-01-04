@@ -19,7 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <mbedtls/version.h>
+#include <mbedtls/certs.h>
+#include <mbedtls/config.h>
 #include <mbedtls/ctr_drbg.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/net_sockets.h>
@@ -129,15 +130,9 @@ static void handle_pk_parse_error(URLContext *h, int ret)
 static void handle_handshake_error(URLContext *h, int ret)
 {
     switch (ret) {
-#if MBEDTLS_VERSION_MAJOR < 3
     case MBEDTLS_ERR_SSL_NO_USABLE_CIPHERSUITE:
         av_log(h, AV_LOG_ERROR, "None of the common ciphersuites is usable. Was the local certificate correctly set?\n");
         break;
-#else
-    case MBEDTLS_ERR_SSL_HANDSHAKE_FAILURE:
-        av_log(h, AV_LOG_ERROR, "TLS handshake failed.\n");
-        break;
-#endif
     case MBEDTLS_ERR_SSL_FATAL_ALERT_MESSAGE:
         av_log(h, AV_LOG_ERROR, "A fatal alert message was received from the peer, has the peer a correct certificate?\n");
         break;
@@ -200,6 +195,16 @@ static int tls_open(URLContext *h, const char *uri, int flags, AVDictionary **op
         }
     }
 
+    // load key file
+    if (shr->key_file) {
+        if ((ret = mbedtls_pk_parse_keyfile(&tls_ctx->priv_key,
+                                            shr->key_file,
+                                            tls_ctx->priv_key_pw)) != 0) {
+            handle_pk_parse_error(h, ret);
+            goto fail;
+        }
+    }
+
     // seed the random number generator
     if ((ret = mbedtls_ctr_drbg_seed(&tls_ctx->ctr_drbg_context,
                                      mbedtls_entropy_func,
@@ -207,21 +212,6 @@ static int tls_open(URLContext *h, const char *uri, int flags, AVDictionary **op
                                      NULL, 0)) != 0) {
         av_log(h, AV_LOG_ERROR, "mbedtls_ctr_drbg_seed returned %d\n", ret);
         goto fail;
-    }
-
-    // load key file
-    if (shr->key_file) {
-        if ((ret = mbedtls_pk_parse_keyfile(&tls_ctx->priv_key,
-                                            shr->key_file,
-                                            tls_ctx->priv_key_pw
-#if MBEDTLS_VERSION_MAJOR >= 3
-                                            , mbedtls_ctr_drbg_random,
-                                            &tls_ctx->ctr_drbg_context
-#endif
-                                            )) != 0) {
-            handle_pk_parse_error(h, ret);
-            goto fail;
-        }
     }
 
     if ((ret = mbedtls_ssl_config_defaults(&tls_ctx->ssl_config,
@@ -348,12 +338,7 @@ static const AVOption options[] = {
     { NULL }
 };
 
-static const AVClass tls_class = {
-    .class_name = "tls",
-    .item_name  = av_default_item_name,
-    .option     = options,
-    .version    = LIBAVUTIL_VERSION_INT,
-};
+TLS_CLASS(TLSContext, tls_shared)
 
 const URLProtocol ff_tls_protocol = {
     .name           = "tls",

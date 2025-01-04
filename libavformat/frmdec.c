@@ -24,6 +24,7 @@
  * Megalux Frame demuxer
  */
 
+#include "libavcodec/raw.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"

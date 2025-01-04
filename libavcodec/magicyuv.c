@@ -428,10 +428,11 @@ static int build_huffman(AVCodecContext *avctx, const uint8_t *table,
     return 0;
 }
 
-static int magy_decode_frame(AVCodecContext *avctx, AVFrame *p,
+static int magy_decode_frame(AVCodecContext *avctx, void *data,
                              int *got_frame, AVPacket *avpkt)
 {
     MagicYUVContext *s = avctx->priv_data;
+    AVFrame *p = data;
     GetByteContext gb;
     uint32_t first_offset, offset, next_offset, header_size, slice_width;
     int width, height, format, version, table_size;
@@ -701,7 +702,7 @@ const FFCodec ff_magicyuv_decoder = {
     .priv_data_size   = sizeof(MagicYUVContext),
     .init             = magy_decode_init,
     .close            = magy_decode_end,
-    FF_CODEC_DECODE_CB(magy_decode_frame),
+    .decode           = magy_decode_frame,
     .p.capabilities   = AV_CODEC_CAP_DR1 |
                         AV_CODEC_CAP_FRAME_THREADS |
                         AV_CODEC_CAP_SLICE_THREADS,

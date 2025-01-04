@@ -132,6 +132,8 @@ static int bin_probe(const AVProbeData *p)
 {
     const uint8_t *d = p->buf;
     int magic = 0, sauce = 0;
+    int invisible = 0;
+    int i;
 
     if (p->buf_size > 256)
         magic = !memcmp(d + p->buf_size - 256, next_magic, sizeof(next_magic));
@@ -154,6 +156,12 @@ static int bin_probe(const AVProbeData *p)
         calculate_height(&par, p->buf_size);
         if (par.height <= 0)
             return 0;
+
+        for (i = 0; i < p->buf_size - 256;  i+=2) {
+            if ((d[i+1] & 15) == (d[i+1] >> 4) && d[i] && d[i] != 0xFF && d[i] != ' ') {
+                invisible ++;
+            }
+        }
 
         if (par.width * par.height * 2 / (8*16) == p->buf_size)
             return AVPROBE_SCORE_MAX / 2;

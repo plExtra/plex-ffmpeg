@@ -538,13 +538,12 @@ static av_always_inline void blend_plane_##depth##_##nbits##bits(AVFilterContext
                     if (i && yuv)                                                                          \
                         *d = av_clip((*d * (max - alpha) + *s * alpha) / max + *s - mid, -mid, mid) + mid; \
                     else                                                                                   \
-                        *d = av_clip_uintp2((*d * (max - alpha) + *s * alpha) / max + *s - (16<<(nbits-8)),\
-                                                                                                    nbits);\
+                        *d = FFMIN((*d * (max - alpha) + *s * alpha) / max + *s, max);                     \
                 } else {                                                                                   \
                     if (i && yuv)                                                                          \
                         *d = av_clip(FAST_DIV255((*d - mid) * (max - alpha)) + *s - mid, -mid, mid) + mid; \
                     else                                                                                   \
-                        *d = av_clip_uint8(FAST_DIV255(*d * (255 - alpha)) + *s - 16);                     \
+                        *d = FFMIN(FAST_DIV255(*d * (max - alpha)) + *s, max);                             \
                 }                                                                                          \
             }                                                                                              \
             s++;                                                                                           \
@@ -984,10 +983,9 @@ static int config_input_main(AVFilterLink *inlink)
     }
 
 end:
-#if ARCH_X86
-    ff_overlay_init_x86(s, s->format, inlink->format,
-                        s->alpha_format, s->main_has_alpha);
-#endif
+    if (ARCH_X86)
+        ff_overlay_init_x86(s, s->format, inlink->format,
+                            s->alpha_format, s->main_has_alpha);
 
     return 0;
 }

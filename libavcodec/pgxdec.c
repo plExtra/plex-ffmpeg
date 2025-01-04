@@ -32,9 +32,9 @@ static int pgx_get_number(AVCodecContext *avctx, GetByteContext *g, int *number)
     *number = 0;
     while (1) {
         uint64_t temp;
-        if (bytestream2_get_bytes_left(g) <= 0)
+        if (!bytestream2_get_bytes_left(g))
             return AVERROR_INVALIDDATA;
-        digit = bytestream2_get_byteu(g);
+        digit = bytestream2_get_byte(g);
         if (digit == ' ' || digit == 0xA || digit == 0xD)
             break;
         else if (digit < '0' || digit > '9')
@@ -56,24 +56,28 @@ static int pgx_decode_header(AVCodecContext *avctx, GetByteContext *g,
 {
     int byte;
 
-    if (bytestream2_get_bytes_left(g) < 12)
+    if (bytestream2_get_bytes_left(g) < 6) {
         return AVERROR_INVALIDDATA;
-
-    bytestream2_skipu(g, 6);
-
-    // Is the component signed?
-    byte = bytestream2_peek_byteu(g);
-    if (byte == '+') {
-        *sign = 0;
-        bytestream2_skipu(g, 1);
-    } else if (byte == '-') {
-        *sign = 1;
-        bytestream2_skipu(g, 1);
     }
 
-    byte = bytestream2_peek_byteu(g);
+    bytestream2_skip(g, 6);
+
+    // Is the component signed?
+    byte = bytestream2_peek_byte(g);
+    if (byte == '+') {
+        *sign = 0;
+        bytestream2_skip(g, 1);
+    } else if (byte == '-') {
+        *sign = 1;
+        bytestream2_skip(g, 1);
+    } else if (byte == 0)
+        goto error;
+
+    byte = bytestream2_peek_byte(g);
     if (byte == ' ')
-        bytestream2_skipu(g, 1);
+        bytestream2_skip(g, 1);
+    else if (byte == 0)
+        goto error;
 
     if (pgx_get_number(avctx, g, depth))
         goto error;
@@ -95,24 +99,28 @@ error:
     static inline void write_frame_ ##D(AVFrame *frame, GetByteContext *g, \
                                         int width, int height, int sign, int depth)         \
     {                                                                                       \
-        const unsigned offset = sign ? (1 << (D - 1)) : 0;                                  \
         int i, j;                                                                           \
         for (i = 0; i < height; i++) {                                                      \
-            PIXEL *line = (PIXEL*)(frame->data[0] + i * frame->linesize[0]);                \
+            PIXEL *line = (PIXEL*)frame->data[0] + i*frame->linesize[0]/sizeof(PIXEL);      \
             for (j = 0; j < width; j++) {                                                   \
-                unsigned val = bytestream2_get_ ##suffix##u(g) << (D - depth);              \
-                val ^= offset;                                                              \
+                unsigned val;                                                               \
+                if (sign)                                                                   \
+                    val = (PIXEL)bytestream2_get_ ##suffix(g) + (1 << (depth - 1));         \
+                else                                                                        \
+                    val = bytestream2_get_ ##suffix(g);                                     \
+                val <<= (D - depth);                                                        \
                 *(line + j) = val;                                                          \
             }                                                                               \
         }                                                                                   \
     }                                                                                       \
 
-WRITE_FRAME(8, uint8_t, byte)
-WRITE_FRAME(16, uint16_t, be16)
+WRITE_FRAME(8, int8_t, byte)
+WRITE_FRAME(16, int16_t, be16)
 
-static int pgx_decode_frame(AVCodecContext *avctx, AVFrame *p,
+static int pgx_decode_frame(AVCodecContext *avctx, void *data,
                             int *got_frame, AVPacket *avpkt)
 {
+    AVFrame *p = data;
     int ret;
     int bpp;
     int width, height, depth;
@@ -157,5 +165,5 @@ const FFCodec ff_pgx_decoder = {
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_PGX,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    FF_CODEC_DECODE_CB(pgx_decode_frame),
+    .decode         = pgx_decode_frame,
 };

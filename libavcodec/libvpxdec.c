@@ -199,7 +199,7 @@ static int set_pix_fmt(AVCodecContext *avctx, struct vpx_image *img,
 }
 
 static int decode_frame(AVCodecContext *avctx, vpx_codec_ctx_t *decoder,
-                        const uint8_t *data, uint32_t data_sz)
+                        uint8_t *data, uint32_t data_sz)
 {
     if (vpx_codec_decode(decoder, data, data_sz, NULL, 0) != VPX_CODEC_OK) {
         const char *error  = vpx_codec_error(decoder);
@@ -215,10 +215,11 @@ static int decode_frame(AVCodecContext *avctx, vpx_codec_ctx_t *decoder,
     return 0;
 }
 
-static int vpx_decode(AVCodecContext *avctx, AVFrame *picture,
-                      int *got_frame, AVPacket *avpkt)
+static int vpx_decode(AVCodecContext *avctx,
+                      void *data, int *got_frame, AVPacket *avpkt)
 {
     VPxContext *ctx = avctx->priv_data;
+    AVFrame *picture = data;
     const void *iter = NULL;
     const void *iter_alpha = NULL;
     struct vpx_image *img, *img_alpha;
@@ -365,7 +366,7 @@ const FFCodec ff_libvpx_vp8_decoder = {
     .priv_data_size = sizeof(VPxContext),
     .init           = vp8_init,
     .close          = vpx_free,
-    FF_CODEC_DECODE_CB(vpx_decode),
+    .decode         = vpx_decode,
     .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
 };
 #endif /* CONFIG_LIBVPX_VP8_DECODER */
@@ -388,7 +389,7 @@ FFCodec ff_libvpx_vp9_decoder = {
     .priv_data_size = sizeof(VPxContext),
     .init           = vp9_init,
     .close          = vpx_free,
-    FF_CODEC_DECODE_CB(vpx_decode),
+    .decode         = vpx_decode,
     .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
     .init_static_data = ff_vp9_init_static,
 };
