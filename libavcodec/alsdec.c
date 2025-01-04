@@ -361,9 +361,6 @@ static av_cold int read_specific_config(ALSDecContext *ctx)
         return AVERROR_PATCHWELCOME;
     }
 
-    if (avctx->ch_layout.nb_channels == 0)
-        return AVERROR_INVALIDDATA;
-
     ctx->cur_frame_length = sconf->frame_length;
 
     // read channel config
@@ -1794,10 +1791,11 @@ static int read_frame_data(ALSDecContext *ctx, unsigned int ra_frame)
 
 /** Decode an ALS frame.
  */
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
-                        int *got_frame_ptr, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame_ptr,
+                        AVPacket *avpkt)
 {
     ALSDecContext *ctx       = avctx->priv_data;
+    AVFrame *frame           = data;
     ALSSpecificConfig *sconf = &ctx->sconf;
     const uint8_t *buffer    = avpkt->data;
     int buffer_size          = avpkt->size;
@@ -2186,7 +2184,7 @@ const FFCodec ff_als_decoder = {
     .priv_data_size = sizeof(ALSDecContext),
     .init           = decode_init,
     .close          = decode_end,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .flush          = flush,
     .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,

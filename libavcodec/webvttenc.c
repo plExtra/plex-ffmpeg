@@ -113,7 +113,12 @@ static void webvtt_style_apply(WebVTTContext *s, const char *style)
 static void webvtt_text_cb(void *priv, const char *text, int len)
 {
     WebVTTContext *s = priv;
-    av_bprint_append_data(&s->buffer, text, len);
+    char *buf = av_strndup(text, len);
+    if (!buf)
+        return;
+
+    av_bprint_escape(&s->buffer, buf, NULL, AV_ESCAPE_MODE_XML, 0);
+    av_free(buf);
 }
 
 static void webvtt_new_line_cb(void *priv, int forced)
@@ -218,7 +223,7 @@ const FFCodec ff_webvtt_encoder = {
     .p.id           = AV_CODEC_ID_WEBVTT,
     .priv_data_size = sizeof(WebVTTContext),
     .init           = webvtt_encode_init,
-    FF_CODEC_ENCODE_SUB_CB(webvtt_encode_frame),
+    .encode_sub     = webvtt_encode_frame,
     .close          = webvtt_encode_close,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

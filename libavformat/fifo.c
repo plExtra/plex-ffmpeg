@@ -28,7 +28,6 @@
 #include "libavutil/threadmessage.h"
 #include "avformat.h"
 #include "internal.h"
-#include "mux.h"
 
 #define FIFO_DEFAULT_QUEUE_SIZE              60
 #define FIFO_DEFAULT_MAX_RECOVERY_ATTEMPTS   0

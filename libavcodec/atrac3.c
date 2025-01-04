@@ -122,7 +122,7 @@ typedef struct ATRAC3Context {
 } ATRAC3Context;
 
 static DECLARE_ALIGNED(32, float, mdct_window)[MDCT_SIZE];
-static VLCElem atrac3_vlc_table[7 * 1 << ATRAC3_VLC_BITS];
+static VLC_TYPE atrac3_vlc_table[7 * 1 << ATRAC3_VLC_BITS][2];
 static VLC   spectral_coeff_tab[7];
 
 /**
@@ -790,9 +790,10 @@ static int al_decode_frame(AVCodecContext *avctx, const uint8_t *databuf,
     return 0;
 }
 
-static int atrac3_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int atrac3_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     ATRAC3Context *q = avctx->priv_data;
@@ -829,9 +830,10 @@ static int atrac3_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     return avctx->block_align;
 }
 
-static int atrac3al_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int atrac3al_decode_frame(AVCodecContext *avctx, void *data,
                                  int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame = data;
     int ret;
 
     frame->nb_samples = SAMPLES_PER_FRAME;
@@ -852,7 +854,7 @@ static int atrac3al_decode_frame(AVCodecContext *avctx, AVFrame *frame,
 
 static av_cold void atrac3_init_static_data(void)
 {
-    VLCElem *table = atrac3_vlc_table;
+    VLC_TYPE (*table)[2] = atrac3_vlc_table;
     const uint8_t (*hufftabs)[2] = atrac3_hufftabs;
     int i;
 
@@ -1023,7 +1025,7 @@ const FFCodec ff_atrac3_decoder = {
     .priv_data_size   = sizeof(ATRAC3Context),
     .init             = atrac3_decode_init,
     .close            = atrac3_decode_close,
-    FF_CODEC_DECODE_CB(atrac3_decode_frame),
+    .decode           = atrac3_decode_frame,
     .p.capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
     .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                         AV_SAMPLE_FMT_NONE },
@@ -1038,7 +1040,7 @@ const FFCodec ff_atrac3al_decoder = {
     .priv_data_size   = sizeof(ATRAC3Context),
     .init             = atrac3_decode_init,
     .close            = atrac3_decode_close,
-    FF_CODEC_DECODE_CB(atrac3al_decode_frame),
+    .decode           = atrac3al_decode_frame,
     .p.capabilities   = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1,
     .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                         AV_SAMPLE_FMT_NONE },

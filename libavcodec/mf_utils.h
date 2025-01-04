@@ -29,7 +29,6 @@
 // mf*.h headers below indirectly include strmif.h.)
 #include <icodecapi.h>
 #else
-#define NO_DSHOW_STRSAFE
 #include <dshow.h>
 // Older versions of mingw-w64 need codecapi.h explicitly included, while newer
 // ones include it implicitly from dshow.h (via uuids.h).
@@ -42,25 +41,6 @@
 
 #include "avcodec.h"
 
-// Windows N editions does not provide MediaFoundation by default.
-// So to avoid DLL loading error, MediaFoundation will be dynamically loaded
-// except on UWP build since LoadLibrary is not available on it.
-typedef struct MFFunctions {
-    HRESULT (WINAPI *MFStartup) (ULONG Version, DWORD dwFlags);
-    HRESULT (WINAPI *MFShutdown) (void);
-    HRESULT (WINAPI *MFCreateAlignedMemoryBuffer) (DWORD cbMaxLength,
-                                                   DWORD cbAligment,
-                                                   IMFMediaBuffer **ppBuffer);
-    HRESULT (WINAPI *MFCreateSample) (IMFSample **ppIMFSample);
-    HRESULT (WINAPI *MFCreateMediaType) (IMFMediaType **ppMFType);
-    // MFTEnumEx is missing in Windows Vista's mfplat.dll.
-    HRESULT (WINAPI *MFTEnumEx)(GUID guidCategory, UINT32 Flags,
-                                const MFT_REGISTER_TYPE_INFO *pInputType,
-                                const MFT_REGISTER_TYPE_INFO *pOutputType,
-                                IMFActivate ***pppMFTActivate,
-                                UINT32 *pnumMFTActivate);
-} MFFunctions;
-
 // These functions do exist in mfapi.h, but are only available within
 // __cplusplus ifdefs.
 HRESULT ff_MFGetAttributeSize(IMFAttributes *pattr, REFGUID guid,
@@ -69,6 +49,22 @@ HRESULT ff_MFSetAttributeSize(IMFAttributes *pattr, REFGUID guid,
                               UINT32 uw, UINT32 uh);
 #define ff_MFSetAttributeRatio ff_MFSetAttributeSize
 #define ff_MFGetAttributeRatio ff_MFGetAttributeSize
+
+// MFTEnumEx was missing from mingw-w64's mfplat import library until
+// mingw-w64 v6.0.0, thus wrap it and load it using GetProcAddress.
+// It's also missing in Windows Vista's mfplat.dll.
+HRESULT ff_MFTEnumEx(GUID guidCategory, UINT32 Flags,
+                     const MFT_REGISTER_TYPE_INFO *pInputType,
+                     const MFT_REGISTER_TYPE_INFO *pOutputType,
+                     IMFActivate ***pppMFTActivate, UINT32 *pnumMFTActivate);
+
+DEFINE_GUID(ff_CODECAPI_AVDecVideoAcceleration_H264, 0xf7db8a2f, 0x4f48, 0x4ee8, 0xae, 0x31, 0x8b, 0x6e, 0xbe, 0x55, 0x8a, 0xe2);
+
+// WMA1. Apparently there is no official GUID symbol for this.
+DEFINE_GUID(ff_MFAudioFormat_MSAUDIO1, 0x00000160, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71);
+
+// MP42 FourCC. I made up the symbol name.
+DEFINE_GUID(ff_MFVideoFormat_MP42, 0x3234504D, 0x0000, 0x0010, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71);
 
 // These do exist in mingw-w64's codecapi.h, but they aren't properly defined
 // by the header until after mingw-w64 v7.0.0.
@@ -109,6 +105,7 @@ DEFINE_GUID(ff_MF_SA_MINIMUM_OUTPUT_SAMPLE_COUNT_PROGRESSIVE, 0xf5523a5, 0x1cb2,
 DEFINE_MEDIATYPE_GUID(ff_MFVideoFormat_HEVC, 0x43564548); // FCC('HEVC')
 DEFINE_MEDIATYPE_GUID(ff_MFVideoFormat_HEVC_ES, 0x53564548); // FCC('HEVS')
 
+DEFINE_GUID(ff_GUID_NULL,                0x00000000, 0x0000,0x0000,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00);
 
 // This enum is missing from mingw-w64's codecapi.h by v7.0.0.
 enum ff_eAVEncCommonRateControlMode {
@@ -161,8 +158,7 @@ char *ff_hr_str_buf(char *buf, size_t size, HRESULT hr);
 #define FF_VAL_VT_UI4(v) FF_VARIANT_VALUE(VT_UI4, .ulVal = (v))
 #define FF_VAL_VT_BOOL(v) FF_VARIANT_VALUE(VT_BOOL, .boolVal = (v))
 
-IMFSample *ff_create_memory_sample(MFFunctions *f, void *fill_data,
-                                   size_t size, size_t align);
+IMFSample *ff_create_memory_sample(void *fill_data, size_t size, size_t align);
 enum AVSampleFormat ff_media_type_to_sample_fmt(IMFAttributes *type);
 enum AVPixelFormat ff_media_type_to_pix_fmt(IMFAttributes *type);
 const GUID *ff_pix_fmt_to_guid(enum AVPixelFormat pix_fmt);
@@ -172,10 +168,10 @@ char *ff_guid_str_buf(char *buf, size_t buf_size, const GUID *guid);
 void ff_attributes_dump(void *log, IMFAttributes *attrs);
 void ff_media_type_dump(void *log, IMFMediaType *type);
 const CLSID *ff_codec_to_mf_subtype(enum AVCodecID codec);
-int ff_instantiate_mf(void *log, MFFunctions *f, GUID category,
+int ff_instantiate_mf(void *log, GUID category,
                       MFT_REGISTER_TYPE_INFO *in_type,
                       MFT_REGISTER_TYPE_INFO *out_type,
                       int use_hw, IMFTransform **res);
-void ff_free_mf(MFFunctions *f, IMFTransform **mft);
+void ff_free_mf(IMFTransform **mft);
 
 #endif

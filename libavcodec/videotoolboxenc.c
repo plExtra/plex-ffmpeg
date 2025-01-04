@@ -2747,7 +2747,7 @@ const FFCodec ff_h264_videotoolbox_encoder = {
     .priv_data_size   = sizeof(VTEncContext),
     .p.pix_fmts       = avc_pix_fmts,
     .init             = vtenc_init,
-    FF_CODEC_ENCODE_CB(vtenc_frame),
+    .encode2          = vtenc_frame,
     .close            = vtenc_close,
     .p.priv_class     = &h264_videotoolbox_class,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
@@ -2782,7 +2782,7 @@ const FFCodec ff_hevc_videotoolbox_encoder = {
     .priv_data_size   = sizeof(VTEncContext),
     .p.pix_fmts       = hevc_pix_fmts,
     .init             = vtenc_init,
-    FF_CODEC_ENCODE_CB(vtenc_frame),
+    .encode2          = vtenc_frame,
     .close            = vtenc_close,
     .p.priv_class     = &hevc_videotoolbox_class,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
@@ -2821,7 +2821,7 @@ const FFCodec ff_prores_videotoolbox_encoder = {
     .priv_data_size   = sizeof(VTEncContext),
     .p.pix_fmts       = prores_pix_fmts,
     .init             = vtenc_init,
-    FF_CODEC_ENCODE_CB(vtenc_frame),
+    .encode2          = vtenc_frame,
     .close            = vtenc_close,
     .p.priv_class     = &prores_videotoolbox_class,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |

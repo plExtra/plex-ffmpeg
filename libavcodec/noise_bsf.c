@@ -23,6 +23,7 @@
 #include "bsf.h"
 #include "bsf_internal.h"
 
+#include "libavutil/avstring.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
 #include "libavutil/eval.h"
@@ -219,10 +220,10 @@ static const AVClass noise_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const FFBitStreamFilter ff_noise_bsf = {
-    .p.name         = "noise",
-    .p.priv_class   = &noise_class,
+const AVBitStreamFilter ff_noise_bsf = {
+    .name           = "noise",
     .priv_data_size = sizeof(NoiseContext),
+    .priv_class     = &noise_class,
     .init           = noise_init,
     .close          = noise_close,
     .filter         = noise,

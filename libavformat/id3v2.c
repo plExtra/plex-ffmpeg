@@ -38,7 +38,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavcodec/png.h"
 #include "avio_internal.h"
-#include "demux.h"
+#include "internal.h"
 #include "id3v1.h"
 #include "id3v2.h"
 
@@ -321,39 +321,53 @@ static void read_ttag(AVFormatContext *s, AVIOContext *pb, int taglen,
                       AVDictionary **metadata, const char *key)
 {
     uint8_t *dst;
-    int encoding, dict_flags = AV_DICT_DONT_OVERWRITE | AV_DICT_DONT_STRDUP_VAL;
+    uint8_t *dst_key = NULL;
+    int encoding, dict_flags = AV_DICT_MULTIKEY | AV_DICT_DONT_STRDUP_VAL | AV_DICT_DEDUP;
     unsigned genre;
+    int count = 0;
+    int is_tipl = !(strcmp(key, "TIPL") && strcmp(key, "TMCL") &&
+                    strcmp(key, "IPL"));
 
     if (taglen < 1)
         return;
 
+    // Check if the next byte is encoding or the start of a ISO8859 string
     encoding = avio_r8(pb);
-    taglen--; /* account for encoding type byte */
-
-    if (decode_str(s, pb, encoding, &dst, &taglen) < 0) {
-        av_log(s, AV_LOG_ERROR, "Error reading frame %s, skipped\n", key);
-        return;
+    if (encoding < 0x20)
+      taglen--; /* account for encoding type byte */
+    else
+    {
+      encoding = ID3v2_ENCODING_ISO8859;
+      avio_seek(pb, -1, SEEK_CUR); /* back the stream up a byte */
     }
 
-    if (!(strcmp(key, "TCON") && strcmp(key, "TCO"))                         &&
-        (sscanf(dst, "(%d)", &genre) == 1 || sscanf(dst, "%d", &genre) == 1) &&
-        genre <= ID3v1_GENRE_MAX) {
-        av_freep(&dst);
-        dst = av_strdup(ff_id3v1_genre_str[genre]);
-    } else if (!(strcmp(key, "TXXX") && strcmp(key, "TXX"))) {
-        /* dst now contains the key, need to get value */
-        key = dst;
+    while (taglen > 0) {
         if (decode_str(s, pb, encoding, &dst, &taglen) < 0) {
             av_log(s, AV_LOG_ERROR, "Error reading frame %s, skipped\n", key);
-            av_freep(&key);
             return;
         }
-        dict_flags |= AV_DICT_DONT_STRDUP_KEY;
-    } else if (!*dst)
-        av_freep(&dst);
 
-    if (dst)
-        av_dict_set(metadata, key, dst, dict_flags);
+        count++;
+
+        if (!(strcmp(key, "TCON") && strcmp(key, "TCO"))                         &&
+            (sscanf(dst, "(%d)", &genre) == 1 || sscanf(dst, "%d", &genre) == 1) &&
+            genre <= ID3v1_GENRE_MAX) {
+            av_freep(&dst);
+            dst = av_strdup(ff_id3v1_genre_str[genre]);
+        } else if (!(strcmp(key, "TXXX") && strcmp(key, "TXX")) ||
+                   (is_tipl && (count & 1))) {
+            /* dst now contains the key, need to get value */
+            av_free(dst_key);
+            key = dst_key = dst;
+            continue;
+        } else if (!*dst)
+            av_freep(&dst);
+
+        if (dst)
+            av_dict_set(metadata, key, dst, dict_flags);
+    }
+
+    av_free(dst_key);
 }
 
 static void read_uslt(AVFormatContext *s, AVIOContext *pb, int taglen,
@@ -1039,7 +1053,7 @@ static void id3v2_parse(AVIOContext *pb, AVDictionary **metadata,
                     pbx = &pb_local.pub; // read from sync buffer
                 }
 #endif
-            if (tag[0] == 'T')
+            if (tag[0] == 'T' || !strcmp(tag, "IPL"))
                 /* parse text tag */
                 read_ttag(s, pbx, tlen, metadata, tag);
             else if (!memcmp(tag, "USLT", 4))

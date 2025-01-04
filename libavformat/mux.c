@@ -21,15 +21,16 @@
 
 #include "avformat.h"
 #include "internal.h"
-#include "mux.h"
 #include "version.h"
 #include "libavcodec/bsf.h"
 #include "libavcodec/internal.h"
 #include "libavcodec/packet_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/dict.h"
+#include "libavutil/pixdesc.h"
 #include "libavutil/timestamp.h"
 #include "libavutil/avassert.h"
+#include "libavutil/avstring.h"
 #include "libavutil/internal.h"
 #include "libavutil/mathematics.h"
 
@@ -86,6 +87,51 @@ static void frac_add(FFFrac *f, int64_t incr)
         num     = num % den;
     }
     f->num = num;
+}
+
+AVRational ff_choose_timebase(AVFormatContext *s, AVStream *st, int min_precision)
+{
+    AVRational q;
+
+    q = st->time_base;
+
+    for (int j = 2; j < 14; j += 1 + (j > 2))
+        while (q.den / q.num < min_precision && q.num % j == 0)
+            q.num /= j;
+    while (q.den / q.num < min_precision && q.den < (1<<24))
+        q.den <<= 1;
+
+    return q;
+}
+
+enum AVChromaLocation ff_choose_chroma_location(AVFormatContext *s, AVStream *st)
+{
+    AVCodecParameters *par = st->codecpar;
+    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(par->format);
+
+    if (par->chroma_location != AVCHROMA_LOC_UNSPECIFIED)
+        return par->chroma_location;
+
+    if (pix_desc) {
+        if (pix_desc->log2_chroma_h == 0) {
+            return AVCHROMA_LOC_TOPLEFT;
+        } else if (pix_desc->log2_chroma_w == 1 && pix_desc->log2_chroma_h == 1) {
+            if (par->field_order == AV_FIELD_UNKNOWN || par->field_order == AV_FIELD_PROGRESSIVE) {
+                switch (par->codec_id) {
+                case AV_CODEC_ID_MJPEG:
+                case AV_CODEC_ID_MPEG1VIDEO: return AVCHROMA_LOC_CENTER;
+                }
+            }
+            if (par->field_order == AV_FIELD_UNKNOWN || par->field_order != AV_FIELD_PROGRESSIVE) {
+                switch (par->codec_id) {
+                case AV_CODEC_ID_MPEG2VIDEO: return AVCHROMA_LOC_LEFT;
+                }
+            }
+        }
+    }
+
+    return AVCHROMA_LOC_UNSPECIFIED;
+
 }
 
 int avformat_alloc_output_context2(AVFormatContext **avctx, const AVOutputFormat *oformat,
@@ -416,6 +462,26 @@ static void flush_if_needed(AVFormatContext *s)
     }
 }
 
+static int write_header_internal(AVFormatContext *s)
+{
+    FFFormatContext *const si = ffformatcontext(s);
+    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
+        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
+    if (s->oformat->write_header) {
+        int ret = s->oformat->write_header(s);
+        if (ret >= 0 && s->pb && s->pb->error < 0)
+            ret = s->pb->error;
+        si->write_header_ret = ret;
+        if (ret < 0)
+            return ret;
+        flush_if_needed(s);
+    }
+    si->header_written = 1;
+    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
+        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_UNKNOWN);
+    return 0;
+}
+
 static void deinit_muxer(AVFormatContext *s)
 {
     FFFormatContext *const si = ffformatcontext(s);
@@ -457,18 +523,11 @@ int avformat_write_header(AVFormatContext *s, AVDictionary **options)
         if ((ret = avformat_init_output(s, options)) < 0)
             return ret;
 
-    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
-        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_HEADER);
-    if (s->oformat->write_header) {
-        ret = s->oformat->write_header(s);
-        if (ret >= 0 && s->pb && s->pb->error < 0)
-            ret = s->pb->error;
+    if (!(s->oformat->check_bitstream && s->flags & AVFMT_FLAG_AUTO_BSF)) {
+        ret = write_header_internal(s);
         if (ret < 0)
             goto fail;
-        flush_if_needed(s);
     }
-    if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
-        avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_UNKNOWN);
 
     if (!si->streams_initialized) {
         if ((ret = init_pts(s)) < 0)
@@ -544,7 +603,9 @@ static int compute_muxer_pkt_fields(AVFormatContext *s, AVStream *st, AVPacket *
         av_log(s, AV_LOG_ERROR,
                "Application provided invalid, non monotonically increasing dts to muxer in stream %d: %s >= %s\n",
                st->index, av_ts2str(sti->cur_dts), av_ts2str(pkt->dts));
+#if 0 //PLEX
         return AVERROR(EINVAL);
+#endif //PLEX
     }
     if (pkt->dts != AV_NOPTS_VALUE && pkt->pts != AV_NOPTS_VALUE && pkt->pts < pkt->dts) {
         av_log(s, AV_LOG_ERROR,
@@ -717,6 +778,12 @@ static int write_packet(AVFormatContext *s, AVPacket *pkt)
     }
     handle_avoid_negative_ts(si, sti, pkt);
 
+    if (!si->header_written) {
+        ret = si->write_header_ret ? si->write_header_ret : write_header_internal(s);
+        if (ret < 0)
+            goto fail;
+    }
+
     if ((pkt->flags & AV_PKT_FLAG_UNCODED_FRAME)) {
         AVFrame **frame = (AVFrame **)pkt->data;
         av_assert0(pkt->size == sizeof(*frame));
@@ -731,6 +798,7 @@ static int write_packet(AVFormatContext *s, AVPacket *pkt)
             ret = s->pb->error;
     }
 
+fail:
     if (ret >= 0)
         st->nb_frames++;
 
@@ -920,6 +988,7 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
 {
     FFFormatContext *const si = ffformatcontext(s);
     int stream_count = 0;
+    int sparse_count = 0;
     int noninterleaved_count = 0;
     int ret;
     int eof = flush;
@@ -935,6 +1004,10 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
         const AVCodecParameters *const par = st->codecpar;
         if (sti->last_in_packet_buffer) {
             ++stream_count;
+        } else if (par->codec_type == AVMEDIA_TYPE_SUBTITLE ||
+                   par->codec_type == AVMEDIA_TYPE_DATA ||
+                   st->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+            ++sparse_count;
         } else if (par->codec_type != AVMEDIA_TYPE_ATTACHMENT &&
                    par->codec_id != AV_CODEC_ID_VP8 &&
                    par->codec_id != AV_CODEC_ID_VP9) {
@@ -945,10 +1018,13 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
     if (si->nb_interleaved_streams == stream_count)
         flush = 1;
 
-    if (s->max_interleave_delta > 0 &&
-        si->packet_buffer.head &&
+    if (si->packet_buffer.head &&
         !flush &&
-        si->nb_interleaved_streams == stream_count+noninterleaved_count
+        ((s->max_interleave_delta > 0 &&
+          si->nb_interleaved_streams == stream_count+sparse_count+noninterleaved_count) ||
+         (s->max_sparse_interleave_delta > 0 &&
+          sparse_count &&
+          si->nb_interleaved_streams == stream_count+sparse_count))
     ) {
         AVPacket *const top_pkt = &si->packet_buffer.head->pkt;
         int64_t delta_dts = INT64_MIN;
@@ -971,11 +1047,22 @@ int ff_interleave_packet_per_dts(AVFormatContext *s, AVPacket *pkt,
             delta_dts = FFMAX(delta_dts, last_dts - top_dts);
         }
 
-        if (delta_dts > s->max_interleave_delta) {
+        if (s->max_interleave_delta > 0 &&
+            delta_dts > s->max_interleave_delta &&
+            si->nb_interleaved_streams == stream_count+sparse_count+noninterleaved_count) {
             av_log(s, AV_LOG_DEBUG,
                    "Delay between the first packet and last packet in the "
                    "muxing queue is %"PRId64" > %"PRId64": forcing output\n",
                    delta_dts, s->max_interleave_delta);
+            flush = 1;
+        } else if (s->max_sparse_interleave_delta > 0 &&
+                   delta_dts > s->max_sparse_interleave_delta &&
+                   si->nb_interleaved_streams == stream_count+sparse_count) {
+            av_log(s, AV_LOG_DEBUG,
+                   "Delay between the first packet and last packet in the "
+                   "muxing queue is %"PRId64" > %"PRId64" and all delayed "
+                   "streams are sparse: forcing output\n",
+                   delta_dts, s->max_sparse_interleave_delta);
             flush = 1;
         }
     }
@@ -1066,12 +1153,27 @@ const AVPacket *ff_interleaved_peek(AVFormatContext *s, int stream)
     return NULL;
 }
 
+static int do_new_extradata_copy(AVCodecParameters *par, AVPacket *pkt) {
+    size_t side_size;
+    uint8_t *side = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, &side_size);
+    if (side) {
+        uint8_t *new_extra = av_mallocz(side_size + AV_INPUT_BUFFER_PADDING_SIZE);
+        if (!new_extra)
+            return AVERROR(ENOMEM);
+        memcpy(new_extra, side, side_size);
+        av_free(par->extradata);
+        par->extradata = new_extra;
+        par->extradata_size = side_size;
+    }
+    return 1;
+}
+
 static int check_bitstream(AVFormatContext *s, FFStream *sti, AVPacket *pkt)
 {
     int ret;
 
     if (!(s->flags & AVFMT_FLAG_AUTO_BSF))
-        return 1;
+        return do_new_extradata_copy(sti->pub.codecpar, pkt);
 
     if (s->oformat->check_bitstream) {
         if (!sti->bitstream_checked) {
@@ -1081,6 +1183,9 @@ static int check_bitstream(AVFormatContext *s, FFStream *sti, AVPacket *pkt)
                 sti->bitstream_checked = 1;
         }
     }
+
+    if (!sti->bsfc)
+        return do_new_extradata_copy(sti->pub.codecpar, pkt);
 
     return 1;
 }
@@ -1193,6 +1298,12 @@ int av_write_frame(AVFormatContext *s, AVPacket *in)
 
     if (!in) {
         if (s->oformat->flags & AVFMT_ALLOW_FLUSH) {
+            if (!si->header_written) {
+                ret = si->write_header_ret ? si->write_header_ret : write_header_internal(s);
+                if (ret < 0)
+                    return ret;
+            }
+
             ret = s->oformat->write_packet(s, NULL);
             flush_if_needed(s);
             if (ret >= 0 && s->pb && s->pb->error < 0)
@@ -1268,7 +1379,11 @@ int av_write_trailer(AVFormatContext *s)
     if (ret >= 0)
         ret = ret1;
 
-    if (s->oformat->write_trailer) {
+    if (!si->header_written) {
+        ret = si->write_header_ret ? si->write_header_ret : write_header_internal(s);
+    }
+
+    if (si->header_written && s->oformat->write_trailer) {
         if (!(s->oformat->flags & AVFMT_NOFILE) && s->pb)
             avio_write_marker(s->pb, AV_NOPTS_VALUE, AVIO_DATA_MARKER_TRAILER);
         if (ret >= 0) {
@@ -1302,49 +1417,6 @@ int av_get_output_timestamp(struct AVFormatContext *s, int stream,
         return AVERROR(ENOSYS);
     s->oformat->get_output_timestamp(s, stream, dts, wall);
     return 0;
-}
-
-int ff_stream_add_bitstream_filter(AVStream *st, const char *name, const char *args)
-{
-    int ret;
-    const AVBitStreamFilter *bsf;
-    FFStream *const sti = ffstream(st);
-    AVBSFContext *bsfc;
-
-    av_assert0(!sti->bsfc);
-
-    if (!(bsf = av_bsf_get_by_name(name))) {
-        av_log(NULL, AV_LOG_ERROR, "Unknown bitstream filter '%s'\n", name);
-        return AVERROR_BSF_NOT_FOUND;
-    }
-
-    if ((ret = av_bsf_alloc(bsf, &bsfc)) < 0)
-        return ret;
-
-    bsfc->time_base_in = st->time_base;
-    if ((ret = avcodec_parameters_copy(bsfc->par_in, st->codecpar)) < 0) {
-        av_bsf_free(&bsfc);
-        return ret;
-    }
-
-    if (args && bsfc->filter->priv_class) {
-        if ((ret = av_set_options_string(bsfc->priv_data, args, "=", ":")) < 0) {
-            av_bsf_free(&bsfc);
-            return ret;
-        }
-    }
-
-    if ((ret = av_bsf_init(bsfc)) < 0) {
-        av_bsf_free(&bsfc);
-        return ret;
-    }
-
-    sti->bsfc = bsfc;
-
-    av_log(NULL, AV_LOG_VERBOSE,
-           "Automatically inserted bitstream filter '%s'; args='%s'\n",
-           name, args ? args : "");
-    return 1;
 }
 
 int ff_write_chained(AVFormatContext *dst, int dst_stream, AVPacket *pkt,

@@ -27,6 +27,7 @@
 
 #include <stdint.h>
 
+#include "config.h"
 #include "config_components.h"
 #include "libavutil/avassert.h"
 #include "libavutil/dict.h"
@@ -37,7 +38,6 @@
 #include "avformat.h"
 #include "avio.h"
 #include "avio_internal.h"
-#include "demux.h"
 #include "id3v2.h"
 #include "internal.h"
 #include "metadata.h"

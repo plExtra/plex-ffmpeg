@@ -22,7 +22,6 @@
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
 #include "avio_internal.h"
-#include "demux.h"
 #include "internal.h"
 
 typedef struct MCADemuxContext {

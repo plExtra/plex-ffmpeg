@@ -29,7 +29,6 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
-#include "libavutil/getenv_utf8.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
 #include "libavutil/parseutils.h"
@@ -41,7 +40,8 @@
 #include "network.h"
 #include "os_support.h"
 #include "url.h"
-#include "version.h"
+
+#include "avio_internal.h" //PLEX
 
 /* XXX: POST protocol is not completely implemented because ffmpeg uses
  * only a subset of it. */
@@ -200,13 +200,12 @@ void ff_http_init_auth_state(URLContext *dest, const URLContext *src)
 static int http_open_cnx_internal(URLContext *h, AVDictionary **options)
 {
     const char *path, *proxy_path, *lower_proto = "tcp", *local_path;
-    char *env_http_proxy, *env_no_proxy;
     char *hashmark;
     char hostname[1024], hoststr[1024], proto[10];
     char auth[1024], proxyauth[1024] = "";
     char path1[MAX_URL_SIZE], sanitized_path[MAX_URL_SIZE + 1];
     char buf[1024], urlbuf[MAX_URL_SIZE];
-    int port, use_proxy, err = 0;
+    int port, use_proxy, err;
     HTTPContext *s = h->priv_data;
 
     av_url_split(proto, sizeof(proto), auth, sizeof(auth),
@@ -214,13 +213,9 @@ static int http_open_cnx_internal(URLContext *h, AVDictionary **options)
                  path1, sizeof(path1), s->location);
     ff_url_join(hoststr, sizeof(hoststr), NULL, NULL, hostname, port, NULL);
 
-    env_http_proxy = getenv_utf8("http_proxy");
-    proxy_path = s->http_proxy ? s->http_proxy : env_http_proxy;
-
-    env_no_proxy = getenv_utf8("no_proxy");
-    use_proxy  = !ff_http_match_no_proxy(env_no_proxy, hostname) &&
+    proxy_path = s->http_proxy ? s->http_proxy : getenv("http_proxy");
+    use_proxy  = !ff_http_match_no_proxy(getenv("no_proxy"), hostname) &&
                  proxy_path && av_strstart(proxy_path, "http://", NULL);
-    freeenv_utf8(env_no_proxy);
 
     if (!strcmp(proto, "https")) {
         lower_proto = "tls";
@@ -231,7 +226,7 @@ static int http_open_cnx_internal(URLContext *h, AVDictionary **options)
         if (s->http_proxy) {
             err = av_dict_set(options, "http_proxy", s->http_proxy, 0);
             if (err < 0)
-                goto end;
+                return err;
         }
     }
     if (port < 0)
@@ -266,12 +261,12 @@ static int http_open_cnx_internal(URLContext *h, AVDictionary **options)
         err = ffurl_open_whitelist(&s->hd, buf, AVIO_FLAG_READ_WRITE,
                                    &h->interrupt_callback, options,
                                    h->protocol_whitelist, h->protocol_blacklist, h);
+        if (err < 0)
+            return err;
     }
 
-end:
-    freeenv_utf8(env_http_proxy);
-    return err < 0 ? err : http_connect(
-        h, path, local_path, hoststr, auth, proxyauth);
+    return http_connect(h, path, local_path, hoststr,
+                        auth, proxyauth);
 }
 
 static int http_should_reconnect(HTTPContext *s, int err)
@@ -448,6 +443,21 @@ fail:
         return ret;
     return ff_http_averror(s->http_code, AVERROR(EIO));
 }
+int ff_http_get_shutdown_status(URLContext *h)
+{
+    int ret = 0;
+    HTTPContext *s = h->priv_data;
+
+    /* flush the receive buffer when it is write only mode */
+    char buf[1024];
+    int read_ret;
+    read_ret = ffurl_read(s->hd, buf, sizeof(buf));
+    if (read_ret < 0) {
+        ret = read_ret;
+    }
+
+    return ret;
+}
 
 int ff_http_do_new_request(URLContext *h, const char *uri) {
     return ff_http_do_new_request2(h, uri, NULL);
@@ -489,6 +499,16 @@ int ff_http_do_new_request2(URLContext *h, const char *uri, AVDictionary **opts)
     if (s->willclose)
         return AVERROR_EOF;
 
+    // PLEX
+    ret = 0;
+    while (ret >= 0) {
+        char buf[1024];
+        ret = h->prot->url_read(h, buf, sizeof(buf));
+        if (ret < 0 && ret != AVERROR_EOF)
+            return ret;
+    }
+    //PLEX
+
     s->end_chunked_post = 0;
     s->chunkend      = 0;
     s->off           = 0;
@@ -512,6 +532,31 @@ int ff_http_do_new_request2(URLContext *h, const char *uri, AVDictionary **opts)
     av_dict_free(&options);
     return ret;
 }
+
+//PLEX
+int avformat_http_do_new_request(AVIOContext *pb, const char *uri, const char *verb)
+{
+    int ret;
+    AVDictionary *options = NULL;
+    URLContext *h = ffio_geturlcontext(pb);
+    HTTPContext *s = h->priv_data;
+
+    s->end_chunked_post = 0;
+    s->chunkend      = 0;
+    s->off           = 0;
+    s->icy_data_read = 0;
+
+    av_free(s->method);
+    s->method = av_strdup(verb);
+    av_free(s->location);
+    s->location = av_strdup(uri);
+
+    ret = http_open_cnx(h, &options);
+    av_dict_free(&options);
+
+    return ret;
+}
+//PLEX
 
 int ff_http_averror(int status_code, int default_averror)
 {
@@ -1848,6 +1893,9 @@ static int http_shutdown(URLContext *h, int flags)
     char footer[] = "0\r\n\r\n";
     HTTPContext *s = h->priv_data;
 
+    if (!s->hd)
+        return AVERROR(EINVAL);
+
     /* signal end of chunked encoding if used */
     if (((flags & AVIO_FLAG_WRITE) && s->chunked_post) ||
         ((flags & AVIO_FLAG_READ) && s->chunked_post && s->listen)) {
@@ -1982,12 +2030,19 @@ static int http_get_short_seek(URLContext *h)
     return ffurl_get_short_seek(s->hd);
 }
 
+static void *http_child_next(void *obj, void *prev)
+{
+    HTTPContext *h = obj;
+    return prev ? NULL : h->hd;
+}
+
 #define HTTP_CLASS(flavor)                          \
 static const AVClass flavor ## _context_class = {   \
     .class_name = # flavor,                         \
     .item_name  = av_default_item_name,             \
     .option     = options,                          \
     .version    = LIBAVUTIL_VERSION_INT,            \
+    .child_next = http_child_next,                  \
 }
 
 #if CONFIG_HTTP_PROTOCOL

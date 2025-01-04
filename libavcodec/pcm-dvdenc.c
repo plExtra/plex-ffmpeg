@@ -31,6 +31,8 @@ typedef struct PCMDVDContext {
     int block_size;          // Size of a block of samples in bytes
     int samples_per_block;   // Number of samples per channel per block
     int groups_per_block;    // Number of 20/24-bit sample groups per block
+    uint8_t *extra_samples;  // Pointer to leftover samples from a frame
+    int extra_sample_count;  // Number of leftover samples in the buffer
 } PCMDVDContext;
 
 static av_cold int pcm_dvd_encode_init(AVCodecContext *avctx)
@@ -45,8 +47,6 @@ static av_cold int pcm_dvd_encode_init(AVCodecContext *avctx)
     case 96000:
         freq = 1;
         break;
-    default:
-        av_assert1(0);
     }
 
     switch (avctx->sample_fmt) {
@@ -58,8 +58,6 @@ static av_cold int pcm_dvd_encode_init(AVCodecContext *avctx)
         avctx->bits_per_coded_sample = 24;
         quant = 2;
         break;
-    default:
-        av_assert1(0);
     }
 
     avctx->bits_per_coded_sample = 16 + quant * 4;
@@ -146,8 +144,8 @@ static int pcm_dvd_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                 for (int i = 2; i; i--) {
                     bytestream2_put_be16(&pb, src32[0] >> 16);
                     bytestream2_put_be16(&pb, src32[1] >> 16);
-                    bytestream2_put_byte(&pb, (uint8_t)((*src32++) >> 8));
-                    bytestream2_put_byte(&pb, (uint8_t)((*src32++) >> 8));
+                    bytestream2_put_byte(&pb, (*src32++) >> 24);
+                    bytestream2_put_byte(&pb, (*src32++) >> 24);
                 }
             } while (--blocks);
         } else {
@@ -157,10 +155,10 @@ static int pcm_dvd_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                     bytestream2_put_be16(&pb, src32[1] >> 16);
                     bytestream2_put_be16(&pb, src32[2] >> 16);
                     bytestream2_put_be16(&pb, src32[3] >> 16);
-                    bytestream2_put_byte(&pb, (uint8_t)((*src32++) >> 8));
-                    bytestream2_put_byte(&pb, (uint8_t)((*src32++) >> 8));
-                    bytestream2_put_byte(&pb, (uint8_t)((*src32++) >> 8));
-                    bytestream2_put_byte(&pb, (uint8_t)((*src32++) >> 8));
+                    bytestream2_put_byte(&pb, (*src32++) >> 24);
+                    bytestream2_put_byte(&pb, (*src32++) >> 24);
+                    bytestream2_put_byte(&pb, (*src32++) >> 24);
+                    bytestream2_put_byte(&pb, (*src32++) >> 24);
                 }
             } while (--blocks);
         }
@@ -182,7 +180,7 @@ const FFCodec ff_pcm_dvd_encoder = {
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_SMALL_LAST_FRAME,
     .priv_data_size = sizeof(PCMDVDContext),
     .init           = pcm_dvd_encode_init,
-    FF_CODEC_ENCODE_CB(pcm_dvd_encode_frame),
+    .encode2        = pcm_dvd_encode_frame,
     .p.supported_samplerates = (const int[]) { 48000, 96000, 0},
 #if FF_API_OLD_CHANNEL_LAYOUT
     .p.channel_layouts = (const uint64_t[]) { AV_CH_LAYOUT_MONO,

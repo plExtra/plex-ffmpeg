@@ -48,6 +48,7 @@
 #include "libavutil/time_internal.h"
 #include "libavutil/spherical.h"
 
+#include "libavcodec/avcodec.h"
 #include "libavcodec/bytestream.h"
 #include "libavcodec/flac.h"
 #include "libavcodec/mpeg4audio.h"
@@ -55,7 +56,6 @@
 
 #include "avformat.h"
 #include "avio_internal.h"
-#include "demux.h"
 #include "dovi_isom.h"
 #include "internal.h"
 #include "isom.h"
@@ -421,6 +421,9 @@ typedef struct MatroskaDemuxContext {
 
     /* Bandwidth value for WebM DASH Manifest */
     int bandwidth;
+
+    /* Skip parsing tags in trailers */
+    int skip_trailer_tags;
 } MatroskaDemuxContext;
 
 #define CHILD_OF(parent) { .def = { .n = parent } }
@@ -806,9 +809,16 @@ static const CodecMime mkv_image_mime_tags[] = {
 };
 
 static const CodecMime mkv_mime_tags[] = {
+    {"text/plain"                 , AV_CODEC_ID_TEXT},
     {"application/x-truetype-font", AV_CODEC_ID_TTF},
+    {"application/x-font-ttf"     , AV_CODEC_ID_TTF},
     {"application/x-font"         , AV_CODEC_ID_TTF},
+    {"application/font-sfnt"      , AV_CODEC_ID_TTF},
+    {"font/collection"            , AV_CODEC_ID_TTF},
+    {"font/ttf"                   , AV_CODEC_ID_TTF},
+    {"font/sfnt"                  , AV_CODEC_ID_TTF},
     {"application/vnd.ms-opentype", AV_CODEC_ID_OTF},
+    {"font/otf"                   , AV_CODEC_ID_OTF},
     {"binary"                     , AV_CODEC_ID_BIN_DATA},
 
     {""                           , AV_CODEC_ID_NONE}
@@ -1951,6 +1961,10 @@ static void matroska_execute_seekhead(MatroskaDemuxContext *matroska)
         if (id == MATROSKA_ID_CUES)
             continue;
 
+        // don't seek for metadata if we don't care
+        if (id == MATROSKA_ID_TAGS && matroska->skip_trailer_tags)
+            continue;
+
         if (matroska_parse_seekhead_entry(matroska, pos) < 0) {
             // mark index as broken
             matroska->cues_parsing_deferred = -1;
@@ -2584,6 +2598,14 @@ static int matroska_parse_tracks(AVFormatContext *s)
                         AV_DICT_DONT_STRDUP_VAL);
         }
 
+        //PLEX
+        if (encodings_list->nb_elem == 1 && !(s->flags & AVFMT_FLAG_BITEXACT)) {
+            av_dict_set_int(&st->metadata, "encoding_type", encodings[0].type, 0);
+            if (encodings[0].type == 0)
+              av_dict_set_int(&st->metadata, "compression_algo", encodings[0].compression.algo, 0);
+        }
+        //PLEX
+
         if (!strcmp(track->codec_id, "V_MS/VFW/FOURCC") &&
              track->codec_priv.size >= 40               &&
             track->codec_priv.data) {
@@ -2811,6 +2833,35 @@ static int matroska_parse_tracks(AVFormatContext *s)
             /* we don't need any value stored in CodecPrivate.
                make sure that it's not exported as extradata. */
             track->codec_priv.size = 0;
+        } else if (codec_id == AV_CODEC_ID_ARIB_CAPTION && track->codec_priv.size == 3) {
+            int component_tag = track->codec_priv.data[0];
+            int data_component_id = AV_RB16(track->codec_priv.data + 1);
+
+            switch (data_component_id) {
+            case 0x0008:
+                // [0x30..0x37] are component tags utilized for
+                // non-mobile captioning service ("profile A").
+                if (component_tag >= 0x30 && component_tag <= 0x37) {
+                    st->codecpar->profile = FF_PROFILE_ARIB_PROFILE_A;
+                }
+                break;
+            case 0x0012:
+                // component tag 0x87 signifies a mobile/partial reception
+                // (1seg) captioning service ("profile C").
+                if (component_tag == 0x87) {
+                    st->codecpar->profile = FF_PROFILE_ARIB_PROFILE_C;
+                }
+                break;
+            default:
+                break;
+            }
+
+            if (st->codecpar->profile == FF_PROFILE_UNKNOWN)
+                av_log(matroska->ctx, AV_LOG_WARNING,
+                       "Unknown ARIB caption profile utilized: %02x / %04x\n",
+                       component_tag, data_component_id);
+
+            track->codec_priv.size = 0;
         }
         track->codec_priv.size -= extradata_offset;
 
@@ -2886,14 +2937,11 @@ static int matroska_parse_tracks(AVFormatContext *s)
                 mkv_stereo_mode_display_mul(track->video.stereo_mode, &display_width_mul, &display_height_mul);
 
             if (track->video.display_unit < MATROSKA_VIDEO_DISPLAYUNIT_UNKNOWN) {
-                if (track->video.display_width && track->video.display_height &&
-                    st->codecpar->height  < INT64_MAX / track->video.display_width  / display_width_mul &&
-                    st->codecpar->width   < INT64_MAX / track->video.display_height / display_height_mul)
-                    av_reduce(&st->sample_aspect_ratio.num,
-                              &st->sample_aspect_ratio.den,
-                              st->codecpar->height * track->video.display_width  * display_width_mul,
-                              st->codecpar->width  * track->video.display_height * display_height_mul,
-                              INT_MAX);
+                av_reduce(&st->sample_aspect_ratio.num,
+                          &st->sample_aspect_ratio.den,
+                          st->codecpar->height * track->video.display_width  * display_width_mul,
+                          st->codecpar->width  * track->video.display_height * display_height_mul,
+                          INT_MAX);
             }
             if (st->codecpar->codec_id != AV_CODEC_ID_HEVC)
                 sti->need_parsing = AVSTREAM_PARSE_HEADERS;
@@ -2950,10 +2998,10 @@ static int matroska_parse_tracks(AVFormatContext *s)
             st->codecpar->codec_tag   = fourcc;
             st->codecpar->sample_rate = track->audio.out_samplerate;
             // channel layout may be already set by codec private checks above
-            if (!av_channel_layout_check(&st->codecpar->ch_layout)) {
+            if (st->codecpar->ch_layout.order == AV_CHANNEL_ORDER_NATIVE &&
+                !st->codecpar->ch_layout.u.mask)
                 st->codecpar->ch_layout.order = AV_CHANNEL_ORDER_UNSPEC;
-                st->codecpar->ch_layout.nb_channels = track->audio.channels;
-            }
+            st->codecpar->ch_layout.nb_channels = track->audio.channels;
             if (!st->codecpar->bits_per_coded_sample)
                 st->codecpar->bits_per_coded_sample = track->audio.bitdepth;
             if (st->codecpar->codec_id == AV_CODEC_ID_MP3 ||
@@ -3703,8 +3751,6 @@ static int matroska_parse_block(MatroskaDemuxContext *matroska, AVBufferRef *buf
     uint64_t num;
     int trust_default_duration;
 
-    av_assert1(buf);
-
     ffio_init_context(&pb, data, size, 0, NULL, NULL, NULL, NULL);
 
     if ((n = ebml_read_num(matroska, &pb.pub, 8, &num, 1)) < 0)
@@ -3938,9 +3984,17 @@ static int matroska_read_seek(AVFormatContext *s, int stream_index,
         matroska_reset_status(matroska, 0, sti->index_entries[sti->nb_index_entries - 1].pos);
         while ((index = av_index_search_timestamp(st, timestamp, flags)) < 0 ||
                index == sti->nb_index_entries - 1) {
+            int ret;
+            int64_t pos = avio_tell(matroska->ctx->pb);
             matroska_clear_queue(matroska);
-            if (matroska_parse_cluster(matroska) < 0)
-                break;
+            if ((ret = matroska_parse_cluster(matroska)) < 0) {
+                if (ret == AVERROR_EOF) {
+                    break;
+                } else if(matroska_resync(matroska, pos) < 0) {
+                    index = -1;
+                    break;
+                }
+            }
         }
     }
 
@@ -3971,6 +4025,7 @@ static int matroska_read_seek(AVFormatContext *s, int stream_index,
     avpriv_update_cur_dts(s, st, sti->index_entries[index].timestamp);
     return 0;
 err:
+    av_log(s, sti->nb_index_entries ? AV_LOG_WARNING : AV_LOG_VERBOSE, "Failed to seek using index; falling back to generic seek\n");
     // slightly hackish but allows proper fallback to
     // the generic seeking code.
     matroska_reset_status(matroska, 0, -1);
@@ -4410,17 +4465,33 @@ static int webm_dash_manifest_read_packet(AVFormatContext *s, AVPacket *pkt)
     return AVERROR_EOF;
 }
 
+#define COMMON_OPTS \
+    { "skip_trailer_tags", "skip parsing metadata at the end of the file.", OFFSET(skip_trailer_tags), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, AV_OPT_FLAG_DECODING_PARAM }, \
+
 #define OFFSET(x) offsetof(MatroskaDemuxContext, x)
-static const AVOption options[] = {
+static const AVOption matroskadec_options[] = {
+    COMMON_OPTS
+    { NULL },
+};
+
+static const AVOption webm_dash_options[] = {
     { "live", "flag indicating that the input is a live file that only has the headers.", OFFSET(is_live), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, AV_OPT_FLAG_DECODING_PARAM },
     { "bandwidth", "bandwidth of this stream to be specified in the DASH manifest.", OFFSET(bandwidth), AV_OPT_TYPE_INT, {.i64 = 0}, 0, INT_MAX, AV_OPT_FLAG_DECODING_PARAM },
+    COMMON_OPTS
     { NULL },
+};
+
+static const AVClass matroskadec_class = {
+    .class_name = "Matroska demuxer",
+    .item_name  = av_default_item_name,
+    .option     = matroskadec_options,
+    .version    = LIBAVUTIL_VERSION_INT,
 };
 
 static const AVClass webm_dash_class = {
     .class_name = "WebM DASH Manifest demuxer",
     .item_name  = av_default_item_name,
-    .option     = options,
+    .option     = webm_dash_options,
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
@@ -4447,5 +4518,6 @@ const AVInputFormat ff_matroska_demuxer = {
     .read_packet    = matroska_read_packet,
     .read_close     = matroska_read_close,
     .read_seek      = matroska_read_seek,
+    .priv_class     = &matroskadec_class,
     .mime_type      = "audio/webm,audio/x-matroska,video/webm,video/x-matroska"
 };

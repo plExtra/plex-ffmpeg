@@ -48,7 +48,6 @@
 #include "rv10dec.h"
 #include "mpeg4video.h"
 #include "mpegvideodata.h"
-#include "mpegvideodec.h"
 #include "mpeg4videodec.h"
 
 // The defines below define the number of bits that are read at once for

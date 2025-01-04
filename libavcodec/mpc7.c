@@ -44,7 +44,7 @@ static VLC scfi_vlc, dscf_vlc, hdr_vlc, quant_vlc[MPC7_QUANT_VLC_TABLES][2];
 
 static av_cold void mpc7_init_static(void)
 {
-    static VLCElem quant_tables[7224];
+    static VLC_TYPE quant_tables[7224][2];
     const uint8_t *raw_quant_table = mpc7_quant_vlcs;
 
     INIT_VLC_STATIC_FROM_LENGTHS(&scfi_vlc, MPC7_SCFI_BITS, MPC7_SCFI_SIZE,
@@ -172,9 +172,10 @@ static int get_scale_idx(GetBitContext *gb, int ref)
     return ref + t;
 }
 
-static int mpc7_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int mpc7_decode_frame(AVCodecContext * avctx, void *data,
                              int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size;
     MPCContext *c = avctx->priv_data;
@@ -317,7 +318,7 @@ const FFCodec ff_mpc7_decoder = {
     .priv_data_size = sizeof(MPCContext),
     .init           = mpc7_decode_init,
     .close          = mpc7_decode_close,
-    FF_CODEC_DECODE_CB(mpc7_decode_frame),
+    .decode         = mpc7_decode_frame,
     .flush          = mpc7_decode_flush,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,

@@ -162,7 +162,7 @@ static av_cold int get_channel_label(int channel)
     else if (map <= AV_CH_BACK_RIGHT)
         return channel + 29;
     else if (map <= AV_CH_BACK_CENTER)
-        return channel - 1;
+        return channel + 1;
     else if (map <= AV_CH_SIDE_RIGHT)
         return channel - 4;
     else if (map <= AV_CH_TOP_BACK_RIGHT)
@@ -554,13 +554,11 @@ static int ffat_encode(AVCodecContext *avctx, AVPacket *avpkt,
                                      avctx->frame_size,
                            &avpkt->pts,
                            &avpkt->duration);
-        ret = 0;
     } else if (ret && ret != 1) {
-        av_log(avctx, AV_LOG_ERROR, "Encode error: %i\n", ret);
-        ret = AVERROR_EXTERNAL;
+        av_log(avctx, AV_LOG_WARNING, "Encode error: %i\n", ret);
     }
 
-    return ret;
+    return 0;
 }
 
 static av_cold void ffat_encode_flush(AVCodecContext *avctx)
@@ -623,7 +621,7 @@ static const AVOption options[] = {
         .priv_data_size = sizeof(ATDecodeContext), \
         .init           = ffat_init_encoder, \
         .close          = ffat_close_encoder, \
-        FF_CODEC_ENCODE_CB(ffat_encode), \
+        .encode2        = ffat_encode, \
         .flush          = ffat_encode_flush, \
         .p.priv_class   = &ffat_##NAME##_enc_class, \
         .p.capabilities = AV_CODEC_CAP_DELAY | \

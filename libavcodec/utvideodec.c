@@ -557,12 +557,13 @@ static void restore_gradient_planar_il(UtvideoContext *c, uint8_t *src, ptrdiff_
     }
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     UtvideoContext *c = avctx->priv_data;
+    AVFrame *const frame = data;
     int i, j;
     const uint8_t *plane_start[5];
     int plane_size, max_slice_size = 0, slice_start, slice_end, slice_size;
@@ -1058,7 +1059,7 @@ const FFCodec ff_utvideo_decoder = {
     .priv_data_size = sizeof(UtvideoContext),
     .init           = decode_init,
     .close          = decode_end,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

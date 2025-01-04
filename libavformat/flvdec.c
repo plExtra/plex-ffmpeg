@@ -24,18 +24,18 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/dict.h"
 #include "libavutil/opt.h"
 #include "libavutil/internal.h"
 #include "libavutil/intfloat.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/time_internal.h"
+#include "libavcodec/bytestream.h"
 #include "avformat.h"
-#include "demux.h"
 #include "internal.h"
+#include "avio_internal.h"
 #include "flv.h"
 
 #define VALIDATE_INDEX_TS_THRESH 2500
@@ -462,8 +462,6 @@ static int parse_keyframes_index(AVFormatContext *s, AVIOContext *ioc, int64_t m
             if (isnan(d) || d < INT64_MIN || d > INT64_MAX)
                 goto invalid;
             if (current_array == &times && (d <= INT64_MIN / 1000 || d >= INT64_MAX / 1000))
-                goto invalid;
-            if (avio_feof(ioc))
                 goto invalid;
             current_array[0][i] = d;
         }

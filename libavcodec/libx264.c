@@ -37,6 +37,10 @@
 #include "atsc_a53.h"
 #include "sei.h"
 
+#if defined(_MSC_VER)
+#define X264_API_IMPORTS 1
+#endif
+
 #include <x264.h>
 #include <float.h>
 #include <math.h>
@@ -62,8 +66,7 @@ typedef struct X264Context {
     int             sei_size;
     char *preset;
     char *tune;
-    const char *profile;
-    char *profile_opt;
+    char *profile;
     char *level;
     int fastfirstpass;
     char *wpredp;
@@ -833,27 +836,26 @@ static av_cold int X264_init(AVCodecContext *avctx)
     if (x4->fastfirstpass)
         x264_param_apply_fastfirstpass(&x4->params);
 
-    x4->profile = x4->profile_opt;
     /* Allow specifying the x264 profile through AVCodecContext. */
     if (!x4->profile)
         switch (avctx->profile) {
         case FF_PROFILE_H264_BASELINE:
-            x4->profile = "baseline";
+            x4->profile = av_strdup("baseline");
             break;
         case FF_PROFILE_H264_HIGH:
-            x4->profile = "high";
+            x4->profile = av_strdup("high");
             break;
         case FF_PROFILE_H264_HIGH_10:
-            x4->profile = "high10";
+            x4->profile = av_strdup("high10");
             break;
         case FF_PROFILE_H264_HIGH_422:
-            x4->profile = "high422";
+            x4->profile = av_strdup("high422");
             break;
         case FF_PROFILE_H264_HIGH_444:
-            x4->profile = "high444";
+            x4->profile = av_strdup("high444");
             break;
         case FF_PROFILE_H264_MAIN:
-            x4->profile = "main";
+            x4->profile = av_strdup("main");
             break;
         default:
             break;
@@ -942,9 +944,7 @@ static av_cold int X264_init(AVCodecContext *avctx)
                     return ret;
             }
             p= strchr(p, ':');
-            if (p) {
-                ++p;
-            }
+            p+=!!p;
         }
     }
 
@@ -1100,7 +1100,7 @@ static av_cold void X264_init_static(FFCodec *codec)
 static const AVOption options[] = {
     { "preset",        "Set the encoding preset (cf. x264 --fullhelp)",   OFFSET(preset),        AV_OPT_TYPE_STRING, { .str = "medium" }, 0, 0, VE},
     { "tune",          "Tune the encoding params (cf. x264 --fullhelp)",  OFFSET(tune),          AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE},
-    { "profile",       "Set profile restrictions (cf. x264 --fullhelp)",  OFFSET(profile_opt),       AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE},
+    { "profile",       "Set profile restrictions (cf. x264 --fullhelp) ", OFFSET(profile),       AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE},
     { "fastfirstpass", "Use fast settings when encoding first pass",      OFFSET(fastfirstpass), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, VE},
     {"level", "Specify level (as defined by Annex A)", OFFSET(level), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, VE},
     {"passlogfile", "Filename for 2 pass stats", OFFSET(stats), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, VE},
@@ -1228,7 +1228,7 @@ FFCodec ff_libx264_encoder = {
     .p.wrapper_name   = "libx264",
     .priv_data_size   = sizeof(X264Context),
     .init             = X264_init,
-    FF_CODEC_ENCODE_CB(X264_frame),
+    .encode2          = X264_frame,
     .close            = X264_close,
     .defaults         = x264_defaults,
 #if X264_BUILD < 153
@@ -1265,7 +1265,7 @@ const FFCodec ff_libx264rgb_encoder = {
     .p.wrapper_name = "libx264",
     .priv_data_size = sizeof(X264Context),
     .init           = X264_init,
-    FF_CODEC_ENCODE_CB(X264_frame),
+    .encode2        = X264_frame,
     .close          = X264_close,
     .defaults       = x264_defaults,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_AUTO_THREADS
@@ -1297,7 +1297,7 @@ const FFCodec ff_libx262_encoder = {
     .p.wrapper_name   = "libx264",
     .priv_data_size   = sizeof(X264Context),
     .init             = X264_init,
-    FF_CODEC_ENCODE_CB(X264_frame),
+    .encode2          = X264_frame,
     .close            = X264_close,
     .defaults         = x264_defaults,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP | FF_CODEC_CAP_AUTO_THREADS,

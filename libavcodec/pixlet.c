@@ -198,7 +198,7 @@ static int read_low_coeffs(AVCodecContext *avctx, int16_t *dst, int size,
     return get_bits_count(bc) >> 3;
 }
 
-static int read_high_coeffs(AVCodecContext *avctx, const uint8_t *src, int16_t *dst,
+static int read_high_coeffs(AVCodecContext *avctx, uint8_t *src, int16_t *dst,
                             int size, int c, int a, int d,
                             int width, ptrdiff_t stride)
 {
@@ -313,7 +313,7 @@ static int read_high_coeffs(AVCodecContext *avctx, const uint8_t *src, int16_t *
     return get_bits_count(bc) >> 3;
 }
 
-static int read_highpass(AVCodecContext *avctx, const uint8_t *ptr,
+static int read_highpass(AVCodecContext *avctx, uint8_t *ptr,
                          int plane, AVFrame *frame)
 {
     PixletContext *ctx = avctx->priv_data;
@@ -601,17 +601,18 @@ static int decode_plane(AVCodecContext *avctx, int plane,
     return 0;
 }
 
-static int pixlet_decode_frame(AVCodecContext *avctx, AVFrame *p,
+static int pixlet_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame, AVPacket *avpkt)
 {
     PixletContext *ctx = avctx->priv_data;
     int i, w, h, width, height, ret, version;
+    AVFrame *p = data;
     uint32_t pktsize, depth;
 
     bytestream2_init(&ctx->gb, avpkt->data, avpkt->size);
 
     pktsize = bytestream2_get_be32(&ctx->gb);
-    if (pktsize <= 44 + (NB_LEVELS * 8 + 6) * 3 || pktsize - 4 > bytestream2_get_bytes_left(&ctx->gb)) {
+    if (pktsize <= 44 || pktsize - 4 > bytestream2_get_bytes_left(&ctx->gb)) {
         av_log(avctx, AV_LOG_ERROR, "Invalid packet size %"PRIu32"\n", pktsize);
         return AVERROR_INVALIDDATA;
     }
@@ -699,7 +700,7 @@ const FFCodec ff_pixlet_decoder = {
     .p.id             = AV_CODEC_ID_PIXLET,
     .init             = pixlet_init,
     .close            = pixlet_close,
-    FF_CODEC_DECODE_CB(pixlet_decode_frame),
+    .decode           = pixlet_decode_frame,
     .priv_data_size   = sizeof(PixletContext),
     .p.capabilities   = AV_CODEC_CAP_DR1 |
                         AV_CODEC_CAP_FRAME_THREADS,

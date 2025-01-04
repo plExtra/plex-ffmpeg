@@ -955,11 +955,12 @@ static void postfilter(AMRContext *p, float *lpc, float *buf_out)
 
 /// @}
 
-static int amrnb_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int amrnb_decode_frame(AVCodecContext *avctx, void *data,
                               int *got_frame_ptr, AVPacket *avpkt)
 {
 
     AMRChannelsContext *s = avctx->priv_data;        // pointer to private data
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     int ret;
@@ -1103,7 +1104,7 @@ const FFCodec ff_amrnb_decoder = {
     .p.id           = AV_CODEC_ID_AMR_NB,
     .priv_data_size = sizeof(AMRChannelsContext),
     .init           = amrnb_decode_init,
-    FF_CODEC_DECODE_CB(amrnb_decode_frame),
+    .decode         = amrnb_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
                                                      AV_SAMPLE_FMT_NONE },

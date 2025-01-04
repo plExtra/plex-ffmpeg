@@ -787,11 +787,12 @@ imdct:
     return 0;
 }
 
-static int atrac9_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int atrac9_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
     int ret;
     GetBitContext gb;
+    AVFrame *frame = data;
     ATRAC9Context *s = avctx->priv_data;
     const int frames = FFMIN(avpkt->size / s->avg_frame_size, s->frame_count);
 
@@ -844,7 +845,7 @@ static av_cold void atrac9_init_vlc(VLC *vlc, int nb_bits, int nb_codes,
                                     const uint8_t (**tab)[2],
                                     unsigned *buf_offset, int offset)
 {
-    static VLCElem vlc_buf[24812];
+    static VLC_TYPE vlc_buf[24812][2];
 
     vlc->table           = &vlc_buf[*buf_offset];
     vlc->table_allocated = FF_ARRAY_ELEMS(vlc_buf) - *buf_offset;
@@ -995,7 +996,7 @@ const FFCodec ff_atrac9_decoder = {
     .priv_data_size = sizeof(ATRAC9Context),
     .init           = atrac9_decode_init,
     .close          = atrac9_decode_close,
-    FF_CODEC_DECODE_CB(atrac9_decode_frame),
+    .decode         = atrac9_decode_frame,
     .flush          = atrac9_decode_flush,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .p.capabilities = AV_CODEC_CAP_SUBFRAMES | AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,

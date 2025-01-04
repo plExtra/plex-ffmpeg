@@ -325,6 +325,7 @@ enum AVEscapeMode {
     AV_ESCAPE_MODE_BACKSLASH, ///< Use backslash escaping.
     AV_ESCAPE_MODE_QUOTE,     ///< Use single-quote escaping.
     AV_ESCAPE_MODE_XML,       ///< Use XML non-markup character data escaping.
+    AV_ESCAPE_MODE_URL,       ///< Use URL percent-escaping
 };
 
 /**
@@ -345,6 +346,36 @@ enum AVEscapeMode {
 #define AV_ESCAPE_FLAG_STRICT (1 << 1)
 
 /**
+<<<<<<< HEAD
+ * In addition to the provided list, escape all characters outside the range of
+ * U+0020 to U+007E.
+ * This only applies to XML-escaping.
+ */
+#define AV_ESCAPE_FLAG_NON_ASCII (1 << 2)
+
+/**
+ * In addition to the provided list, escape single or double quotes.
+ * This only applies to XML-escaping.
+ */
+#define AV_ESCAPE_FLAG_ESCAPE_SINGLE_QUOTE (1 << 3)
+#define AV_ESCAPE_FLAG_ESCAPE_DOUBLE_QUOTE (1 << 4)
+
+/**
+ * Replace invalid UTF-8 characters with a U+FFFD REPLACEMENT CHARACTER, escaped
+ * if AV_ESCAPE_FLAG_NON_ASCII is set.
+ * This only applies to XML-escaping.
+ */
+#define AV_ESCAPE_FLAG_REPLACE_INVALID_SEQUENCES (1 << 5)
+
+/**
+ * Replace invalid UTF-8 characters with a '?', overriding the previous flag.
+ * This only applies to XML-escaping.
+ */
+#define AV_ESCAPE_FLAG_REPLACE_INVALID_ASCII (1 << 6)
+
+/**
+||||||| 2021dbe1d6f
+=======
  * Within AV_ESCAPE_MODE_XML, additionally escape single quotes for single
  * quoted attributes.
  */
@@ -358,6 +389,7 @@ enum AVEscapeMode {
 
 
 /**
+>>>>>>> ffmpeg/master
  * Escape string in src, and put the escaped string in an allocated
  * string in *dst, which must be freed with av_free().
  *

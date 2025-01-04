@@ -26,7 +26,7 @@
 #include "libavcodec/bsf.h"
 #include "internal.h"
 #include "avformat.h"
-#include "mux.h"
+#include "avio_internal.h"
 #include "tee_common.h"
 
 typedef enum {

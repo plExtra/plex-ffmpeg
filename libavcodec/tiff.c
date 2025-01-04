@@ -761,7 +761,6 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
     if (s->is_bayer) {
         av_assert0(width == (s->bpp * s->width + 7) >> 3);
     }
-    av_assert0(!(s->is_bayer && is_yuv));
     if (p->format == AV_PIX_FMT_GRAY12) {
         av_fast_padded_malloc(&s->yuv_line, &s->yuv_line_size, width);
         if (s->yuv_line == NULL) {
@@ -845,8 +844,6 @@ static int tiff_unpack_strip(TiffContext *s, AVFrame *p, uint8_t *dst, int strid
             av_log(s->avctx, AV_LOG_ERROR, "More than one DNG JPEG strips unsupported\n");
             return AVERROR_PATCHWELCOME;
         }
-        if (!s->is_bayer)
-            return AVERROR_PATCHWELCOME;
         if ((ret = dng_decode_jpeg(s->avctx, p, s->stripsize, 0, 0, s->width, s->height)) < 0)
             return ret;
         return 0;
@@ -964,9 +961,6 @@ static int dng_decode_tiles(AVCodecContext *avctx, AVFrame *frame,
     int tile_x = 0, tile_y = 0;
     int pos_x = 0, pos_y = 0;
     int ret;
-
-    if (s->tile_width <= 0 || s->tile_length <= 0)
-        return AVERROR_INVALIDDATA;
 
     has_width_leftover = (s->width % s->tile_width != 0);
     has_height_leftover = (s->height % s->tile_length != 0);
@@ -1746,10 +1740,11 @@ end:
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *p,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx,
+                        void *data, int *got_frame, AVPacket *avpkt)
 {
     TiffContext *const s = avctx->priv_data;
+    AVFrame *const p = data;
     unsigned off, last_off;
     int le, ret, plane, planes;
     int i, j, entries, stride;
@@ -1945,7 +1940,7 @@ again:
             avpriv_report_missing_feature(avctx, "DNG JPG-compressed tiled non-bayer-encoded images");
             return AVERROR_PATCHWELCOME;
         } else {
-            if ((ret = dng_decode_tiles(avctx, p, avpkt)) > 0)
+            if ((ret = dng_decode_tiles(avctx, (AVFrame*)data, avpkt)) > 0)
                 *got_frame = 1;
             return ret;
         }
@@ -2191,7 +2186,7 @@ const FFCodec ff_tiff_decoder = {
     .priv_data_size = sizeof(TiffContext),
     .init           = tiff_init,
     .close          = tiff_end,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .p.priv_class   = &tiff_decoder_class,

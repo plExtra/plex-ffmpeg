@@ -133,4 +133,6 @@ static av_always_inline uint32_t pack16to32(unsigned a, unsigned b)
 #endif
 }
 
+int avpriv_h264_get_profile(int profile_idc, int constraint_set_flags);
+
 #endif /* AVCODEC_H264_PARSE_H */

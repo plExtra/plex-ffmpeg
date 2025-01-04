@@ -22,12 +22,13 @@
  */
 
 #include "avformat.h"
-#include "demux.h"
 #include "internal.h"
 #include "isom.h"
 #include "libavcodec/mpeg4audio.h"
 #include "libavcodec/mpegaudiodata.h"
+#include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/intreadwrite.h"
 
 /* http://www.mp4ra.org */
 /* ordered by muxing preference */
@@ -118,9 +119,9 @@ static const char mov_mdhd_language_map[][4] = {
     "hun",    /*  26 Hungarian */
     "est",    /*  27 Estonian */
     "lav",    /*  28 Latvian */
-    "smi",    /*  29 Sami */
+       "",    /*  29 Sami */
     "fo ",    /*  30 Faroese */
-    "per",    /*  31 Farsi */
+       "",    /*  31 Farsi */
     "rus",    /*  32 Russian */
     "chi",    /*  33 Simplified Chinese */
        "",    /*  34 Flemish */
@@ -165,7 +166,7 @@ static const char mov_mdhd_language_map[][4] = {
     "kan",    /*  73 Kannada */
     "tam",    /*  74 Tamil */
     "tel",    /*  75 Telugu */
-    "sin",    /*  76 Sinhala */
+       "",    /*  76 Sinhala */
     "bur",    /*  77 Burmese */
     "khm",    /*  78 Khmer */
     "lao",    /*  79 Lao */
@@ -179,9 +180,9 @@ static const char mov_mdhd_language_map[][4] = {
     "orm",    /*  87 Oromo */
     "som",    /*  88 Somali */
     "swa",    /*  89 Swahili */
-    "kin",    /*  90 Kinyarwanda */
+       "",    /*  90 Kinyarwanda */
     "run",    /*  91 Rundi */
-    "nya",    /*  92 Nyanja */
+       "",    /*  92 Nyanja */
     "mlg",    /*  93 Malagasy */
     "epo",    /*  94 Esperanto */
        "",    /*  95  */
@@ -331,6 +332,7 @@ int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, AVIOContext 
     enum AVCodecID codec_id;
     int len, tag;
     int ret;
+    FFStream *const sti = ffstream(st);
     int object_type_id = avio_r8(pb);
     avio_r8(pb); /* stream type */
     avio_rb24(pb); /* buffer size db */
@@ -341,6 +343,8 @@ int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, AVIOContext 
     codec_id= ff_codec_get_id(ff_mp4_obj_type, object_type_id);
     if (codec_id)
         st->codecpar->codec_id = codec_id;
+    if (object_type_id == 0x6B) // This can be either MP3 or MP2; let probe_codec decide
+        sti->request_probe = 5;
     av_log(fc, AV_LOG_TRACE, "esds object type id 0x%02x\n", object_type_id);
     len = ff_mp4_read_descr(fc, pb, &tag);
     if (tag == MP4DecSpecificDescrTag) {
@@ -429,6 +433,97 @@ void ff_mov_write_chan(AVIOContext *pb, int64_t channel_layout)
         avio_wb32(pb, channel_layout);
     }
     avio_wb32(pb, 0);              // mNumberChannelDescriptions
+}
+
+int ff_mov_parse_dvcc_dvvc(AVStream *st, GetBitContext *gb, void *log_ctx)
+{
+    AVDOVIDecoderConfigurationRecord *dovi;
+    size_t dovi_size;
+    int ret;
+
+    if (gb->size_in_bits < 32)
+        return AVERROR_INVALIDDATA;
+
+    dovi = av_dovi_alloc(&dovi_size);
+    if (!dovi)
+        return AVERROR(ENOMEM);
+
+    dovi->dv_version_major = get_bits(gb, 8);
+    dovi->dv_version_minor = get_bits(gb, 8);
+
+    dovi->dv_profile        = get_bits(gb, 7);
+    dovi->dv_level          = get_bits(gb, 6);
+    dovi->rpu_present_flag  = get_bits1(gb);
+    dovi->el_present_flag   = get_bits1(gb);
+    dovi->bl_present_flag   = get_bits1(gb);
+    if (gb->size_in_bits >= 24 * 8) {
+        dovi->dv_bl_signal_compatibility_id = get_bits(gb, 4);
+    } else {
+        // 0 stands for None
+        // Dolby Vision V1.2.93 profiles and levels
+        dovi->dv_bl_signal_compatibility_id = 0;
+    }
+
+    ret = av_stream_add_side_data(st, AV_PKT_DATA_DOVI_CONF,
+                                  (uint8_t *)dovi, dovi_size);
+    if (ret < 0) {
+        av_free(dovi);
+        return ret;
+    }
+
+    av_log(log_ctx, AV_LOG_TRACE, "DOVI in dvcC/dvvC box, version: %d.%d, profile: %d, level: %d, "
+           "rpu flag: %d, el flag: %d, bl flag: %d, compatibility id: %d\n",
+           dovi->dv_version_major, dovi->dv_version_minor,
+           dovi->dv_profile, dovi->dv_level,
+           dovi->rpu_present_flag,
+           dovi->el_present_flag,
+           dovi->bl_present_flag,
+           dovi->dv_bl_signal_compatibility_id
+        );
+
+    return 0;
+}
+
+int ff_mov_put_dvcc_dvvc(uint8_t *out, int size, uint32_t *type,
+                         AVDOVIDecoderConfigurationRecord *dovi, void *log_ctx)
+{
+    PutBitContext pb;
+    init_put_bits(&pb, out, size);
+
+    if (size < MOV_DVCC_DVVC_SIZE)
+        return AVERROR(EINVAL);
+
+    if (dovi->dv_profile > 7)
+        *type = MKBETAG('d', 'v', 'v', 'C');
+    else
+        *type = MKBETAG('d', 'v', 'c', 'C');
+
+    put_bits(&pb, 8, dovi->dv_version_major);
+    put_bits(&pb, 8, dovi->dv_version_minor);
+    put_bits(&pb, 7, dovi->dv_profile);
+    put_bits(&pb, 6, dovi->dv_level);
+    put_bits(&pb, 1, dovi->rpu_present_flag);
+    put_bits(&pb, 1, dovi->el_present_flag);
+    put_bits(&pb, 1, dovi->bl_present_flag);
+    put_bits(&pb, 4, dovi->dv_bl_signal_compatibility_id);
+    put_bits(&pb, 28, 0); /* reserved */
+    put_bits32(&pb, 0); /* reserved */
+    put_bits32(&pb, 0); /* reserved */
+    put_bits32(&pb, 0); /* reserved */
+    put_bits32(&pb, 0); /* reserved */
+    flush_put_bits(&pb);
+
+    av_log(log_ctx, AV_LOG_DEBUG, "DOVI in %s box, version: %d.%d, profile: %d, level: %d, "
+           "rpu flag: %d, el flag: %d, bl flag: %d, compatibility id: %d\n",
+           dovi->dv_profile > 7 ? "dvvC" : "dvcC",
+           dovi->dv_version_major, dovi->dv_version_minor,
+           dovi->dv_profile, dovi->dv_level,
+           dovi->rpu_present_flag,
+           dovi->el_present_flag,
+           dovi->bl_present_flag,
+           dovi->dv_bl_signal_compatibility_id);
+
+    return put_bits_count(&pb) / 8;
 }
 
 static const struct MP4TrackKindValueMapping dash_role_map[] = {

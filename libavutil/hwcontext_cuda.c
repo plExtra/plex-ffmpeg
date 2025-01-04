@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "avstring.h"
 #include "buffer.h"
 #include "common.h"
 #include "hwcontext.h"
@@ -29,6 +30,7 @@
 #include "pixdesc.h"
 #include "pixfmt.h"
 #include "imgutils.h"
+#include "uuid.h"
 
 typedef struct CUDAFramesContext {
     int shift_width, shift_height;
@@ -399,12 +401,25 @@ static int cuda_device_create(AVHWDeviceContext *device_ctx,
     AVCUDADeviceContext *hwctx = device_ctx->hwctx;
     CudaFunctions *cu;
     int ret, device_idx = 0;
+    const char *pci_bus_id = NULL;
+    const char *uuid_str = NULL;
+    AVUUID uuid;
+#ifdef _WIN32
+    const char *luid_str = NULL;
+    const char luid[8];
+    unsigned int req_node_mask = UINT_MAX;
+#endif
 
     ret = cuda_flags_from_opts(device_ctx, opts, &flags);
     if (ret < 0)
         goto error;
 
-    if (device)
+    if (device &&
+#ifdef _WIN32
+        !av_strstart(device, "luid:", &luid_str) &&
+#endif
+        !av_strstart(device, "uuid:", &uuid_str) &&
+        !av_strstart(device, "pci:", &pci_bus_id))
         device_idx = strtol(device, NULL, 0);
 
     ret = cuda_device_init(device_ctx);
@@ -413,11 +428,105 @@ static int cuda_device_create(AVHWDeviceContext *device_ctx,
 
     cu = hwctx->internal->cuda_dl;
 
+    if (uuid_str) {
+        if (!cu->cuDeviceGetUuid)
+            return AVERROR(ENOSYS);
+
+        ret = av_uuid_parse(uuid_str, uuid);
+        if (ret < 0)
+            return ret;
+    }
+
+#ifdef _WIN32
+    if (luid_str) {
+        unsigned c;
+
+        // We'll reuse some of the UUID code later
+        uuid_str = luid_str;
+
+        if (!cu->cuDeviceGetLuid)
+            return AVERROR(ENOSYS);
+
+        // Read the high part
+        if (sscanf(luid_str, "%2hhx%2hhx%2hhx%2hhx%n",
+                   &luid[7], &luid[6], &luid[5], &luid[4], &c) != 4)
+            return AVERROR(EINVAL);
+
+        if (c != 8)
+            return AVERROR(EINVAL);
+
+        luid_str += c;
+
+        // Optionally, accept a separator between high and low
+        if (*luid_str == '_')
+            luid_str++;
+
+        if (sscanf(luid_str, "%2hhx%2hhx%2hhx%2hhx%n:%x",
+                   &luid[3], &luid[2], &luid[1], &luid[0], &c, &req_node_mask) < 4)
+            return AVERROR(EINVAL);
+
+        if (c != 8)
+            return AVERROR(EINVAL);
+    }
+#endif
+
     ret = CHECK_CU(cu->cuInit(0));
     if (ret < 0)
         goto error;
 
-    ret = CHECK_CU(cu->cuDeviceGet(&hwctx->internal->cuda_device, device_idx));
+    if (pci_bus_id) {
+        ret = CHECK_CU(cu->cuDeviceGetByPCIBusId(&hwctx->internal->cuda_device, pci_bus_id));
+    } else if (uuid_str) {
+        int i, count;
+        ret = CHECK_CU(cu->cuDeviceGetCount(&count));
+        if (ret < 0)
+            goto error;
+
+        hwctx->internal->cuda_device = -1;
+
+        for (i = 0; i < count; i++) {
+            CUdevice dev;
+            CUuuid dev_uuid;
+
+            ret = CHECK_CU(cu->cuDeviceGet(&dev, i));
+            if (ret < 0)
+                goto error;
+
+#ifdef _WIN32
+            if (luid_str) {
+                char dev_luid[8];
+                unsigned dev_node_mask;
+
+                ret = CHECK_CU(cu->cuDeviceGetLuid(&dev_luid, &dev_node_mask, dev));
+                if (ret < 0)
+                    goto error;
+
+                if (!memcmp(dev_luid, luid, sizeof(luid)) &&
+                    (req_node_mask == UINT_MAX ||
+                     req_node_mask == dev_node_mask))
+                    goto found;
+
+                continue;
+            }
+#endif
+
+            ret = CHECK_CU(cu->cuDeviceGetUuid(&dev_uuid, dev));
+            if (ret < 0)
+                goto error;
+
+            if (av_uuid_equal(uuid, dev_uuid.bytes)) {
+found:
+                hwctx->internal->cuda_device = dev;
+                break;
+            }
+        }
+
+        if (hwctx->internal->cuda_device == -1)
+            ret = AVERROR(EINVAL);
+    } else {
+        ret = CHECK_CU(cu->cuDeviceGet(&hwctx->internal->cuda_device, device_idx));
+    }
+
     if (ret < 0)
         goto error;
 
@@ -512,6 +621,7 @@ static int cuda_device_derive(AVHWDeviceContext *device_ctx,
     }
 
     if (hwctx->internal->cuda_device == -1) {
+        ret = AVERROR(EINVAL);
         av_log(device_ctx, AV_LOG_ERROR, "Could not derive CUDA device.\n");
         goto error;
     }

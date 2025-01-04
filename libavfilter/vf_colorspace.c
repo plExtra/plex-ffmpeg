@@ -24,7 +24,6 @@
  */
 
 #include "libavutil/avassert.h"
-#include "libavutil/csp.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
@@ -54,6 +53,14 @@ enum Colorspace {
     CS_SMPTE240M,
     CS_BT2020,
     CS_NB,
+};
+
+enum Whitepoint {
+    WP_D65,
+    WP_C,
+    WP_DCI,
+    WP_E,
+    WP_NB,
 };
 
 enum WhitepointAdaptation {
@@ -103,6 +110,11 @@ static const enum AVColorSpace default_csp[CS_NB + 1] = {
     [CS_NB]          = AVCOL_SPC_UNSPECIFIED,
 };
 
+struct ColorPrimaries {
+    enum Whitepoint wp;
+    struct PrimaryCoefficients coeff;
+};
+
 struct TransferCharacteristics {
     double alpha, beta, gamma, delta;
 };
@@ -127,7 +139,7 @@ typedef struct ColorSpaceContext {
     unsigned rgb_sz;
     int *dither_scratch[3][2], *dither_scratch_base[3][2];
 
-    const AVColorPrimariesDesc *in_primaries, *out_primaries;
+    const struct ColorPrimaries *in_primaries, *out_primaries;
     int lrgb2lrgb_passthrough;
     DECLARE_ALIGNED(16, int16_t, lrgb2lrgb_coeffs)[3][3][8];
 
@@ -135,7 +147,7 @@ typedef struct ColorSpaceContext {
     int rgb2rgb_passthrough;
     int16_t *lin_lut, *delin_lut;
 
-    const AVLumaCoefficients *in_lumacoef, *out_lumacoef;
+    const struct LumaCoefficients *in_lumacoef, *out_lumacoef;
     int yuv2yuv_passthrough, yuv2yuv_fastmode;
     DECLARE_ALIGNED(16, int16_t, yuv2rgb_coeffs)[3][3][8];
     DECLARE_ALIGNED(16, int16_t, rgb2yuv_coeffs)[3][3][8];
@@ -189,6 +201,40 @@ static const struct TransferCharacteristics *
     return coeffs;
 }
 
+static const struct WhitepointCoefficients whitepoint_coefficients[WP_NB] = {
+    [WP_D65] = { 0.3127, 0.3290 },
+    [WP_C]   = { 0.3100, 0.3160 },
+    [WP_DCI] = { 0.3140, 0.3510 },
+    [WP_E]   = { 1/3.0f, 1/3.0f },
+};
+
+static const struct ColorPrimaries color_primaries[AVCOL_PRI_NB] = {
+    [AVCOL_PRI_BT709]     = { WP_D65, { 0.640, 0.330, 0.300, 0.600, 0.150, 0.060 } },
+    [AVCOL_PRI_BT470M]    = { WP_C,   { 0.670, 0.330, 0.210, 0.710, 0.140, 0.080 } },
+    [AVCOL_PRI_BT470BG]   = { WP_D65, { 0.640, 0.330, 0.290, 0.600, 0.150, 0.060 } },
+    [AVCOL_PRI_SMPTE170M] = { WP_D65, { 0.630, 0.340, 0.310, 0.595, 0.155, 0.070 } },
+    [AVCOL_PRI_SMPTE240M] = { WP_D65, { 0.630, 0.340, 0.310, 0.595, 0.155, 0.070 } },
+    [AVCOL_PRI_SMPTE428]  = { WP_E,   { 0.735, 0.265, 0.274, 0.718, 0.167, 0.009 } },
+    [AVCOL_PRI_SMPTE431]  = { WP_DCI, { 0.680, 0.320, 0.265, 0.690, 0.150, 0.060 } },
+    [AVCOL_PRI_SMPTE432]  = { WP_D65, { 0.680, 0.320, 0.265, 0.690, 0.150, 0.060 } },
+    [AVCOL_PRI_FILM]      = { WP_C,   { 0.681, 0.319, 0.243, 0.692, 0.145, 0.049 } },
+    [AVCOL_PRI_BT2020]    = { WP_D65, { 0.708, 0.292, 0.170, 0.797, 0.131, 0.046 } },
+    [AVCOL_PRI_JEDEC_P22] = { WP_D65, { 0.630, 0.340, 0.295, 0.605, 0.155, 0.077 } },
+};
+
+static const struct ColorPrimaries *get_color_primaries(enum AVColorPrimaries prm)
+{
+    const struct ColorPrimaries *p;
+
+    if (prm >= AVCOL_PRI_NB)
+        return NULL;
+    p = &color_primaries[prm];
+    if (!p->coeff.xr)
+        return NULL;
+
+    return p;
+}
+
 static int fill_gamma_table(ColorSpaceContext *s)
 {
     int n;
@@ -234,8 +280,7 @@ static int fill_gamma_table(ColorSpaceContext *s)
  * This function uses the Bradford mechanism.
  */
 static void fill_whitepoint_conv_table(double out[3][3], enum WhitepointAdaptation wp_adapt,
-                                       const AVWhitepointCoefficients *wp_src,
-                                       const AVWhitepointCoefficients *wp_dst)
+                                       enum Whitepoint src, enum Whitepoint dst)
 {
     static const double ma_tbl[NB_WP_ADAPT_NON_IDENTITY][3][3] = {
         [WP_ADAPT_BRADFORD] = {
@@ -249,20 +294,20 @@ static void fill_whitepoint_conv_table(double out[3][3], enum WhitepointAdaptati
         },
     };
     const double (*ma)[3] = ma_tbl[wp_adapt];
-    double xw_src = av_q2d(wp_src->x), yw_src = av_q2d(wp_src->y);
-    double xw_dst = av_q2d(wp_dst->x), yw_dst = av_q2d(wp_dst->y);
-    double zw_src = 1.0 - xw_src - yw_src;
-    double zw_dst = 1.0 - xw_dst - yw_dst;
+    const struct WhitepointCoefficients *wp_src = &whitepoint_coefficients[src];
+    double zw_src = 1.0 - wp_src->xw - wp_src->yw;
+    const struct WhitepointCoefficients *wp_dst = &whitepoint_coefficients[dst];
+    double zw_dst = 1.0 - wp_dst->xw - wp_dst->yw;
     double mai[3][3], fac[3][3], tmp[3][3];
     double rs, gs, bs, rd, gd, bd;
 
     ff_matrix_invert_3x3(ma, mai);
-    rs = ma[0][0] * xw_src + ma[0][1] * yw_src + ma[0][2] * zw_src;
-    gs = ma[1][0] * xw_src + ma[1][1] * yw_src + ma[1][2] * zw_src;
-    bs = ma[2][0] * xw_src + ma[2][1] * yw_src + ma[2][2] * zw_src;
-    rd = ma[0][0] * xw_dst + ma[0][1] * yw_dst + ma[0][2] * zw_dst;
-    gd = ma[1][0] * xw_dst + ma[1][1] * yw_dst + ma[1][2] * zw_dst;
-    bd = ma[2][0] * xw_dst + ma[2][1] * yw_dst + ma[2][2] * zw_dst;
+    rs = ma[0][0] * wp_src->xw + ma[0][1] * wp_src->yw + ma[0][2] * zw_src;
+    gs = ma[1][0] * wp_src->xw + ma[1][1] * wp_src->yw + ma[1][2] * zw_src;
+    bs = ma[2][0] * wp_src->xw + ma[2][1] * wp_src->yw + ma[2][2] * zw_src;
+    rd = ma[0][0] * wp_dst->xw + ma[0][1] * wp_dst->yw + ma[0][2] * zw_dst;
+    gd = ma[1][0] * wp_dst->xw + ma[1][1] * wp_dst->yw + ma[1][2] * zw_dst;
+    bd = ma[2][0] * wp_dst->xw + ma[2][1] * wp_dst->yw + ma[2][2] * zw_dst;
     fac[0][0] = rd / rs;
     fac[1][1] = gd / gs;
     fac[2][2] = bd / bs;
@@ -368,30 +413,18 @@ static int get_range_off(AVFilterContext *ctx, int *off,
                          int *y_rng, int *uv_rng,
                          enum AVColorRange rng, int depth)
 {
-    switch (rng) {
-    case AVCOL_RANGE_UNSPECIFIED: {
+    if (rng == AVCOL_RANGE_UNSPECIFIED) {
         ColorSpaceContext *s = ctx->priv;
 
         if (!s->did_warn_range) {
             av_log(ctx, AV_LOG_WARNING, "Input range not set, assuming tv/mpeg\n");
             s->did_warn_range = 1;
         }
-    }
-        // fall-through
-    case AVCOL_RANGE_MPEG:
-        *off = 16 << (depth - 8);
-        *y_rng = 219 << (depth - 8);
-        *uv_rng = 224 << (depth - 8);
-        break;
-    case AVCOL_RANGE_JPEG:
-        *off = 0;
-        *y_rng = *uv_rng = (256 << (depth - 8)) - 1;
-        break;
-    default:
-        return AVERROR(EINVAL);
+
+        rng = AVCOL_RANGE_MPEG;
     }
 
-    return 0;
+    return ff_get_range_off(off, y_rng, uv_rng, rng, depth);
 }
 
 static int create_filtergraph(AVFilterContext *ctx,
@@ -441,7 +474,7 @@ static int create_filtergraph(AVFilterContext *ctx,
             s->in_prm = default_prm[FFMIN(s->user_iall, CS_NB)];
         if (s->user_iprm != AVCOL_PRI_UNSPECIFIED)
             s->in_prm = s->user_iprm;
-        s->in_primaries = av_csp_primaries_desc_from_id(s->in_prm);
+        s->in_primaries = get_color_primaries(s->in_prm);
         if (!s->in_primaries) {
             av_log(ctx, AV_LOG_ERROR,
                    "Unsupported input primaries %d (%s)\n",
@@ -449,7 +482,7 @@ static int create_filtergraph(AVFilterContext *ctx,
             return AVERROR(EINVAL);
         }
         s->out_prm = out->color_primaries;
-        s->out_primaries = av_csp_primaries_desc_from_id(s->out_prm);
+        s->out_primaries = get_color_primaries(s->out_prm);
         if (!s->out_primaries) {
             if (s->out_prm == AVCOL_PRI_UNSPECIFIED) {
                 if (s->user_all == CS_UNSPECIFIED) {
@@ -469,19 +502,19 @@ static int create_filtergraph(AVFilterContext *ctx,
                                            sizeof(*s->in_primaries));
         if (!s->lrgb2lrgb_passthrough) {
             double rgb2xyz[3][3], xyz2rgb[3][3], rgb2rgb[3][3];
-            const AVWhitepointCoefficients *wp_out, *wp_in;
+            const struct WhitepointCoefficients *wp_out, *wp_in;
 
-            wp_out = &s->out_primaries->wp;
-            wp_in = &s->in_primaries->wp;
-            ff_fill_rgb2xyz_table(&s->out_primaries->prim, wp_out, rgb2xyz);
+            wp_out = &whitepoint_coefficients[s->out_primaries->wp];
+            wp_in = &whitepoint_coefficients[s->in_primaries->wp];
+            ff_fill_rgb2xyz_table(&s->out_primaries->coeff, wp_out, rgb2xyz);
             ff_matrix_invert_3x3(rgb2xyz, xyz2rgb);
-            ff_fill_rgb2xyz_table(&s->in_primaries->prim, wp_in, rgb2xyz);
-            if (memcmp(wp_in, wp_out, sizeof(*wp_in)) != 0 &&
+            ff_fill_rgb2xyz_table(&s->in_primaries->coeff, wp_in, rgb2xyz);
+            if (s->out_primaries->wp != s->in_primaries->wp &&
                 s->wp_adapt != WP_ADAPT_IDENTITY) {
                 double wpconv[3][3], tmp[3][3];
 
-                fill_whitepoint_conv_table(wpconv, s->wp_adapt, &s->in_primaries->wp,
-                                           &s->out_primaries->wp);
+                fill_whitepoint_conv_table(wpconv, s->wp_adapt, s->in_primaries->wp,
+                                           s->out_primaries->wp);
                 ff_matrix_mul_3x3(tmp, rgb2xyz, wpconv);
                 ff_matrix_mul_3x3(rgb2rgb, tmp, xyz2rgb);
             } else {
@@ -554,7 +587,7 @@ static int create_filtergraph(AVFilterContext *ctx,
         s->in_rng = in->color_range;
         if (s->user_irng != AVCOL_RANGE_UNSPECIFIED)
             s->in_rng = s->user_irng;
-        s->in_lumacoef = av_csp_luma_coeffs_from_avcsp(s->in_csp);
+        s->in_lumacoef = ff_get_luma_coefficients(s->in_csp);
         if (!s->in_lumacoef) {
             av_log(ctx, AV_LOG_ERROR,
                    "Unsupported input colorspace %d (%s)\n",
@@ -567,7 +600,7 @@ static int create_filtergraph(AVFilterContext *ctx,
     if (!s->out_lumacoef) {
         s->out_csp = out->colorspace;
         s->out_rng = out->color_range;
-        s->out_lumacoef = av_csp_luma_coeffs_from_avcsp(s->out_csp);
+        s->out_lumacoef = ff_get_luma_coefficients(s->out_csp);
         if (!s->out_lumacoef) {
             if (s->out_csp == AVCOL_SPC_UNSPECIFIED) {
                 if (s->user_all == CS_UNSPECIFIED) {
@@ -597,7 +630,7 @@ static int create_filtergraph(AVFilterContext *ctx,
     if (!s->yuv2yuv_passthrough) {
         if (redo_yuv2rgb) {
             double rgb2yuv[3][3], (*yuv2rgb)[3] = s->yuv2rgb_dbl_coeffs;
-            int off, bits, in_rng;
+            int off;
 
             res = get_range_off(ctx, &off, &s->in_y_rng, &s->in_uv_rng,
                                 s->in_rng, in_desc->comp[0].depth);
@@ -611,18 +644,10 @@ static int create_filtergraph(AVFilterContext *ctx,
                 s->yuv_offset[0][n] = off;
             ff_fill_rgb2yuv_table(s->in_lumacoef, rgb2yuv);
             ff_matrix_invert_3x3(rgb2yuv, yuv2rgb);
-            bits = 1 << (in_desc->comp[0].depth - 1);
-            for (n = 0; n < 3; n++) {
-                for (in_rng = s->in_y_rng, m = 0; m < 3; m++, in_rng = s->in_uv_rng) {
-                    s->yuv2rgb_coeffs[n][m][0] = lrint(28672 * bits * yuv2rgb[n][m] / in_rng);
-                    for (o = 1; o < 8; o++)
-                        s->yuv2rgb_coeffs[n][m][o] = s->yuv2rgb_coeffs[n][m][0];
-                }
-            }
-            av_assert2(s->yuv2rgb_coeffs[0][1][0] == 0);
-            av_assert2(s->yuv2rgb_coeffs[2][2][0] == 0);
-            av_assert2(s->yuv2rgb_coeffs[0][0][0] == s->yuv2rgb_coeffs[1][0][0]);
-            av_assert2(s->yuv2rgb_coeffs[0][0][0] == s->yuv2rgb_coeffs[2][0][0]);
+
+            ff_get_yuv_coeffs(s->yuv2rgb_coeffs, yuv2rgb, in_desc->comp[0].depth,
+                              s->in_y_rng, s->in_uv_rng, 1);
+
             s->yuv2rgb = s->dsp.yuv2rgb[(in_desc->comp[0].depth - 8) >> 1]
                                        [in_desc->log2_chroma_h + in_desc->log2_chroma_w];
             emms = 1;
@@ -630,7 +655,7 @@ static int create_filtergraph(AVFilterContext *ctx,
 
         if (redo_rgb2yuv) {
             double (*rgb2yuv)[3] = s->rgb2yuv_dbl_coeffs;
-            int off, out_rng, bits;
+            int off;
 
             res = get_range_off(ctx, &off, &s->out_y_rng, &s->out_uv_rng,
                                 s->out_rng, out_desc->comp[0].depth);
@@ -643,15 +668,10 @@ static int create_filtergraph(AVFilterContext *ctx,
             for (n = 0; n < 8; n++)
                 s->yuv_offset[1][n] = off;
             ff_fill_rgb2yuv_table(s->out_lumacoef, rgb2yuv);
-            bits = 1 << (29 - out_desc->comp[0].depth);
-            for (out_rng = s->out_y_rng, n = 0; n < 3; n++, out_rng = s->out_uv_rng) {
-                for (m = 0; m < 3; m++) {
-                    s->rgb2yuv_coeffs[n][m][0] = lrint(bits * out_rng * rgb2yuv[n][m] / 28672);
-                    for (o = 1; o < 8; o++)
-                        s->rgb2yuv_coeffs[n][m][o] = s->rgb2yuv_coeffs[n][m][0];
-                }
-            }
-            av_assert2(s->rgb2yuv_coeffs[1][2][0] == s->rgb2yuv_coeffs[2][0][0]);
+
+            ff_get_yuv_coeffs(s->rgb2yuv_coeffs, rgb2yuv, out_desc->comp[0].depth,
+                              s->out_y_rng, s->out_uv_rng, 0);
+
             s->rgb2yuv = s->dsp.rgb2yuv[(out_desc->comp[0].depth - 8) >> 1]
                                        [out_desc->log2_chroma_h + out_desc->log2_chroma_w];
             s->rgb2yuv_fsb = s->dsp.rgb2yuv_fsb[(out_desc->comp[0].depth - 8) >> 1]

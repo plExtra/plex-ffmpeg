@@ -501,9 +501,8 @@ static int config_input(AVFilterLink *inlink)
         }
     }
 
-#if ARCH_X86
-    ff_removegrain_init_x86(s);
-#endif
+    if (ARCH_X86)
+        ff_removegrain_init_x86(s);
 
     return 0;
 }

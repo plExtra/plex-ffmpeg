@@ -45,7 +45,6 @@
 #include "libavutil/imgutils.h"
 
 #define ZIMG_ALIGNMENT 64
-#define MIN_TILESIZE 64
 #define MAX_THREADS 64
 
 static const char *const var_names[] = {
@@ -114,16 +113,11 @@ typedef struct ZScaleContext {
     int in_h_chr_pos;
     int in_v_chr_pos;
 
-    int first_time;
     int force_original_aspect_ratio;
 
     void *tmp[MAX_THREADS]; //separate for each thread;
     int nb_threads;
     int jobs_ret[MAX_THREADS];
-    double in_slice_start[MAX_THREADS];
-    double in_slice_end[MAX_THREADS];
-    int out_slice_start[MAX_THREADS];
-    int out_slice_end[MAX_THREADS];
 
     zimg_image_format src_format, dst_format;
     zimg_image_format alpha_src_format, alpha_dst_format;
@@ -149,6 +143,12 @@ static av_cold int init(AVFilterContext *ctx)
 {
     ZScaleContext *s = ctx->priv;
     int ret;
+    int i;
+    for (i = 0; i < MAX_THREADS; i++) {
+        s->tmp[i] = NULL;
+        s->graph[i] = NULL;
+        s->alpha_graph[i] = NULL;
+    }
     zimg_image_format_default(&s->src_format, ZIMG_API_VERSION);
     zimg_image_format_default(&s->dst_format, ZIMG_API_VERSION);
     zimg_image_format_default(&s->src_format_tmp, ZIMG_API_VERSION);
@@ -223,21 +223,6 @@ static int query_formats(AVFilterContext *ctx)
     if (ret < 0)
         return ret;
     return ff_formats_ref(ff_make_format_list(pixel_fmts), &ctx->outputs[0]->incfg.formats);
-}
-
-static void slice_params(ZScaleContext *s, int out_h, int in_h)
-{
-    s->out_slice_start[0] = 0;
-    for (int i = 1; i < s->nb_threads; i++) {
-        int slice_end = out_h * i / s->nb_threads;
-        s->out_slice_end[i - 1] = s->out_slice_start[i] = FFALIGN(slice_end, 2);
-    }
-    s->out_slice_end[s->nb_threads - 1] = out_h;
-
-    for (int i = 0; i < s->nb_threads; i++) {
-        s->in_slice_start[i] = s->out_slice_start[i] * in_h / (double)out_h;
-        s->in_slice_end[i]   = s->out_slice_end[i]   * in_h / (double)out_h;
-    }
 }
 
 static int config_props(AVFilterLink *outlink)
@@ -336,7 +321,12 @@ static int config_props(AVFilterLink *outlink)
     outlink->w = w;
     outlink->h = h;
 
-    s->first_time = 1;
+    if (inlink->w == outlink->w &&
+        inlink->h == outlink->h &&
+        inlink->format == outlink->format)
+        ;
+    else {
+    }
 
     if (inlink->sample_aspect_ratio.num){
         outlink->sample_aspect_ratio = av_mul_q((AVRational){outlink->h * inlink->w, outlink->w * inlink->h}, inlink->sample_aspect_ratio);
@@ -584,10 +574,10 @@ static int graphs_build(AVFrame *in, AVFrame *out, const AVPixFmtDescriptor *des
     zimg_image_format dst_format;
     zimg_image_format alpha_src_format;
     zimg_image_format alpha_dst_format;
-    const double in_slice_start  = s->in_slice_start[job_nr];
-    const double in_slice_end    = s->in_slice_end[job_nr];
-    const int out_slice_start = s->out_slice_start[job_nr];
-    const int out_slice_end   = s->out_slice_end[job_nr];
+    const int in_slice_start  =  4 * ((((in->height  + 2) / 4) *  job_nr)   / n_jobs);
+    const int in_slice_end    = (job_nr == n_jobs-1) ? in->height  : 4 *  (((in->height  + 2) / 4) * (job_nr+1) / n_jobs);
+    const int out_slice_start =  4 * ((((out->height + 2) / 4) *  job_nr)   / n_jobs);
+    const int out_slice_end   = (job_nr == n_jobs-1) ? out->height : 4 *  (((out->height + 2) / 4) * (job_nr+1) / n_jobs);
 
     src_format = s->src_format;
     dst_format = s->dst_format;
@@ -708,7 +698,7 @@ static int filter_slice(AVFilterContext *ctx, void *data, int job_nr, int n_jobs
     ZScaleContext *s = ctx->priv;
     zimg_image_buffer_const src_buf = { ZIMG_API_VERSION };
     zimg_image_buffer dst_buf = { ZIMG_API_VERSION };
-    const int out_slice_start = s->out_slice_start[job_nr];
+    const int out_slice_start = 4 * ((((td->out->height + 2) / 4) * job_nr) / n_jobs);
 
     /* create zimg filter graphs for each thread
      only if not created earlier or there is some change in frame parameters */
@@ -780,7 +770,6 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
     if ((link->format != outlink->format) ||
         (link->w != outlink->w) ||
         (link->h != outlink->h) ||
-        s->first_time ||
         (s->src_format.chroma_location != s->dst_format.chroma_location) ||
         (s->src_format.color_family !=s->dst_format.color_family) ||
         (s->src_format.color_primaries !=s->dst_format.color_primaries) ||
@@ -814,7 +803,7 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
         link->dst->inputs[0]->w      = in->width;
         link->dst->inputs[0]->h      = in->height;
 
-        s->nb_threads = av_clip(FFMIN(ff_filter_get_nb_threads(ctx), FFMIN(link->h, outlink->h) / MIN_TILESIZE), 1, MAX_THREADS);
+        s->nb_threads = av_clip(FFMIN(ff_filter_get_nb_threads(ctx), FFMIN(link->h, outlink->h) / 8), 1, MAX_THREADS);
         s->in_colorspace = in->colorspace;
         s->in_trc = in->color_trc;
         s->in_primaries = in->color_primaries;
@@ -824,8 +813,6 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
         s->out_primaries = out->color_primaries;
         s->out_range = out->color_range;
 
-        slice_params(s, out->height, in->height);
-
         zimg_image_format_default(&s->src_format, ZIMG_API_VERSION);
         zimg_image_format_default(&s->dst_format, ZIMG_API_VERSION);
         zimg_graph_builder_params_default(&s->params, ZIMG_API_VERSION);
@@ -834,10 +821,9 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
             s->primaries_in, s->trc_in, s->range_in, s->chromal_in);
         format_init(&s->dst_format, out, odesc, s->colorspace,
             s->primaries, s->trc, s->range, s->chromal);
-        s->first_time = 0;
 
         s->params.dither_type = s->dither;
-        s->params.cpu_type = ZIMG_CPU_AUTO_64B;
+        s->params.cpu_type = ZIMG_CPU_AUTO;
         s->params.resample_filter = s->filter;
         s->params.resample_filter_uv = s->filter;
         s->params.nominal_peak_luminance = s->nominal_peak_luminance;
@@ -851,7 +837,7 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
             zimg_graph_builder_params_default(&s->alpha_params, ZIMG_API_VERSION);
 
             s->alpha_params.dither_type = s->dither;
-            s->alpha_params.cpu_type = ZIMG_CPU_AUTO_64B;
+            s->alpha_params.cpu_type = ZIMG_CPU_AUTO;
             s->alpha_params.resample_filter = s->filter;
 
             s->alpha_src_format.width = in->width;

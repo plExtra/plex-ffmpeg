@@ -27,7 +27,7 @@
 #include <string.h>
 #include <sys/types.h>
 
-#include <mfx/mfxvideo.h>
+#include <mfxvideo.h>
 
 #include "libavutil/common.h"
 #include "libavutil/fifo.h"
@@ -83,13 +83,14 @@ typedef struct QSVContext {
 
     AVFifo *async_fifo;
     int zero_consume_run;
+    int buffered_count;
     int reinit_flag;
 
     enum AVPixelFormat orig_pix_fmt;
     uint32_t fourcc;
     mfxFrameInfo frame_info;
     AVBufferPool *pool;
-    int suggest_pool_size;
+
     int initialized;
 
     // options set by the caller
@@ -131,28 +132,21 @@ static int qsv_get_continuous_buffer(AVCodecContext *avctx, AVFrame *frame,
         frame->linesize[0] = FFALIGN(avctx->width, 128);
         break;
     case AV_PIX_FMT_P010:
-    case AV_PIX_FMT_YUYV422:
         frame->linesize[0] = 2 * FFALIGN(avctx->width, 128);
-        break;
-    case AV_PIX_FMT_Y210:
-        frame->linesize[0] = 4 * FFALIGN(avctx->width, 128);
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Unsupported pixel format.\n");
         return AVERROR(EINVAL);
     }
 
+    frame->linesize[1] = frame->linesize[0];
     frame->buf[0]      = av_buffer_pool_get(pool);
     if (!frame->buf[0])
         return AVERROR(ENOMEM);
 
     frame->data[0] = frame->buf[0]->data;
-    if (avctx->pix_fmt == AV_PIX_FMT_NV12 ||
-        avctx->pix_fmt == AV_PIX_FMT_P010) {
-        frame->linesize[1] = frame->linesize[0];
-        frame->data[1] = frame->data[0] +
-            frame->linesize[0] * FFALIGN(avctx->height, 64);
-    }
+    frame->data[1] = frame->data[0] +
+                            frame->linesize[0] * FFALIGN(avctx->height, 64);
 
     ret = ff_attach_decode_data(frame);
     if (ret < 0)
@@ -283,7 +277,7 @@ static int qsv_decode_preinit(AVCodecContext *avctx, QSVContext *q, enum AVPixel
         hwframes_ctx->height            = FFALIGN(avctx->coded_height, 32);
         hwframes_ctx->format            = AV_PIX_FMT_QSV;
         hwframes_ctx->sw_format         = avctx->sw_pix_fmt;
-        hwframes_ctx->initial_pool_size = q->suggest_pool_size + 16 + avctx->extra_hw_frames;
+        hwframes_ctx->initial_pool_size = 64 + avctx->extra_hw_frames;
         frames_hwctx->frame_type        = MFX_MEMTYPE_VIDEO_MEMORY_DECODER_TARGET;
 
         ret = av_hwframe_ctx_init(avctx->hw_frames_ctx);
@@ -432,11 +426,9 @@ static int alloc_frame(AVCodecContext *avctx, QSVContext *q, QSVFrame *frame)
     if (frame->frame->format == AV_PIX_FMT_QSV) {
         frame->surface = *(mfxFrameSurface1*)frame->frame->data[3];
     } else {
-        ret = ff_qsv_map_frame_to_surface(frame->frame, &frame->surface);
-        if (ret < 0) {
-            av_log(avctx, AV_LOG_ERROR, "map frame to surface failed.\n");
-            return ret;
-        }
+        frame->surface.Data.PitchLow = frame->frame->linesize[0];
+        frame->surface.Data.Y        = frame->frame->data[0];
+        frame->surface.Data.UV       = frame->frame->data[1];
     }
 
     frame->surface.Info = q->frame_info;
@@ -639,13 +631,6 @@ static int qsv_decode(AVCodecContext *avctx, QSVContext *q,
 
     } while (ret == MFX_WRN_DEVICE_BUSY || ret == MFX_ERR_MORE_SURFACE);
 
-    if (ret == MFX_ERR_INCOMPATIBLE_VIDEO_PARAM) {
-        q->reinit_flag = 1;
-        av_log(avctx, AV_LOG_DEBUG, "Video parameter change\n");
-        av_freep(&sync);
-        return 0;
-    }
-
     if (ret != MFX_ERR_NONE &&
         ret != MFX_ERR_MORE_DATA &&
         ret != MFX_WRN_VIDEO_PARAM_CHANGED &&
@@ -662,6 +647,8 @@ static int qsv_decode(AVCodecContext *avctx, QSVContext *q,
         ++q->zero_consume_run;
         if (q->zero_consume_run > 1)
             ff_qsv_print_warning(avctx, ret, "A decode call did not consume any data");
+    } else if (!*sync && bs.DataOffset) {
+        ++q->buffered_count;
     } else {
         q->zero_consume_run = 0;
     }
@@ -794,39 +781,25 @@ static int qsv_process_data(AVCodecContext *avctx, QSVContext *q,
     if (!avctx->coded_height)
         avctx->coded_height = 720;
 
-    /* decode zero-size pkt to flush the buffered pkt before reinit */
-    if (q->reinit_flag) {
+    ret = qsv_decode_header(avctx, q, pkt, pix_fmt, &param);
+
+    if (ret >= 0 && (q->orig_pix_fmt != ff_qsv_map_fourcc(param.mfx.FrameInfo.FourCC) ||
+        avctx->coded_width  != param.mfx.FrameInfo.Width ||
+        avctx->coded_height != param.mfx.FrameInfo.Height)) {
         AVPacket zero_pkt = {0};
-        ret = qsv_decode(avctx, q, frame, got_frame, &zero_pkt);
-        if (ret < 0 || *got_frame)
-            return ret;
-    }
 
-    if (q->reinit_flag || !q->session || !q->initialized) {
-        mfxFrameAllocRequest request;
-        memset(&request, 0, sizeof(request));
-
-        q->reinit_flag = 0;
-        ret = qsv_decode_header(avctx, q, pkt, pix_fmt, &param);
-        if (ret < 0) {
-            if (ret == AVERROR(EAGAIN))
-                av_log(avctx, AV_LOG_INFO, "More data is required to decode header\n");
-            else
-                av_log(avctx, AV_LOG_ERROR, "Error decoding header\n");
-            goto reinit_fail;
+        if (q->buffered_count) {
+            q->reinit_flag = 1;
+            /* decode zero-size pkt to flush the buffered pkt before reinit */
+            q->buffered_count--;
+            return qsv_decode(avctx, q, frame, got_frame, &zero_pkt);
         }
-        param.IOPattern = q->iopattern;
+        q->reinit_flag = 0;
 
         q->orig_pix_fmt = avctx->pix_fmt = pix_fmt = ff_qsv_map_fourcc(param.mfx.FrameInfo.FourCC);
 
         avctx->coded_width  = param.mfx.FrameInfo.Width;
         avctx->coded_height = param.mfx.FrameInfo.Height;
-
-        ret = MFXVideoDECODE_QueryIOSurf(q->session, &param, &request);
-        if (ret < 0)
-            return ff_qsv_print_error(avctx, ret, "Error querying IO surface");
-
-        q->suggest_pool_size = request.NumFrameSuggested;
 
         ret = qsv_decode_preinit(avctx, q, pix_fmt, &param);
         if (ret < 0)
@@ -937,10 +910,11 @@ fail:
     return ret;
 }
 
-static int qsv_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int qsv_decode_frame(AVCodecContext *avctx, void *data,
                             int *got_frame, AVPacket *avpkt)
 {
     QSVDecContext *s = avctx->priv_data;
+    AVFrame *frame    = data;
     int ret;
 
     /* buffer the input packet */
@@ -1011,7 +985,7 @@ const FFCodec ff_##x##_qsv_decoder = { \
     .p.type         = AVMEDIA_TYPE_VIDEO, \
     .p.id           = AV_CODEC_ID_##X, \
     .init           = qsv_decode_init, \
-    FF_CODEC_DECODE_CB(qsv_decode_frame), \
+    .decode         = qsv_decode_frame, \
     .flush          = qsv_decode_flush, \
     .close          = qsv_decode_close, \
     .bsfs           = bsf_name, \
@@ -1019,8 +993,6 @@ const FFCodec ff_##x##_qsv_decoder = { \
     .p.priv_class   = &x##_qsv_class, \
     .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_NV12, \
                                                     AV_PIX_FMT_P010, \
-                                                    AV_PIX_FMT_YUYV422, \
-                                                    AV_PIX_FMT_Y210, \
                                                     AV_PIX_FMT_QSV, \
                                                     AV_PIX_FMT_NONE }, \
     .hw_configs     = qsv_hw_configs, \

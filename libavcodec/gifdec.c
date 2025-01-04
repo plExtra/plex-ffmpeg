@@ -465,8 +465,7 @@ static av_cold int gif_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int gif_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
-                            int *got_frame, AVPacket *avpkt)
+static int gif_decode_frame(AVCodecContext *avctx, void *data, int *got_frame, AVPacket *avpkt)
 {
     GifState *s = avctx->priv_data;
     int ret;
@@ -521,7 +520,7 @@ static int gif_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     if (ret < 0)
         return ret;
 
-    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
+    if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
     *got_frame = 1;
 
@@ -564,7 +563,7 @@ const FFCodec ff_gif_decoder = {
     .priv_data_size = sizeof(GifState),
     .init           = gif_decode_init,
     .close          = gif_decode_close,
-    FF_CODEC_DECODE_CB(gif_decode_frame),
+    .decode         = gif_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
                       FF_CODEC_CAP_INIT_CLEANUP,

@@ -32,7 +32,6 @@
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
 #include "avio_internal.h"
-#include "demux.h"
 #include "internal.h"
 
 #define FORM_TAG MKBETAG('F', 'O', 'R', 'M')

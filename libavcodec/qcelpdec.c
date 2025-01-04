@@ -684,12 +684,13 @@ static void postfilter(QCELPContext *q, float *samples, float *lpc)
                              160, 0.9375, &q->postfilter_agc_mem);
 }
 
-static int qcelp_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int qcelp_decode_frame(AVCodecContext *avctx, void *data,
                               int *got_frame_ptr, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     QCELPContext *q    = avctx->priv_data;
+    AVFrame *frame     = data;
     float *outbuffer;
     int   i, ret;
     float quantized_lspf[10], lpc[10];
@@ -796,7 +797,7 @@ const FFCodec ff_qcelp_decoder = {
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_QCELP,
     .init           = qcelp_decode_init,
-    FF_CODEC_DECODE_CB(qcelp_decode_frame),
+    .decode         = qcelp_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .priv_data_size = sizeof(QCELPContext),
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,

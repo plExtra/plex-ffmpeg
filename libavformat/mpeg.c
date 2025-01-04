@@ -24,7 +24,6 @@
 #include "libavutil/channel_layout.h"
 #include "avformat.h"
 #include "avio_internal.h"
-#include "demux.h"
 #include "internal.h"
 #include "mpeg.h"
 

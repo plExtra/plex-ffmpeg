@@ -28,6 +28,8 @@
 #ifndef AVCODEC_MPEGVIDEO_H
 #define AVCODEC_MPEGVIDEO_H
 
+#include <float.h>
+
 #include "avcodec.h"
 #include "blockdsp.h"
 #include "error_resilience.h"
@@ -99,6 +101,7 @@ typedef struct MpegEncContext {
     int max_b_frames; ///< max number of B-frames for encoding
     int luma_elim_threshold;
     int chroma_elim_threshold;
+    int strict_std_compliance; ///< strictly follow the std (MPEG-4, ...)
     int workaround_bugs;       ///< workaround bugs in encoders which cannot be detected automatically
     int codec_tag;             ///< internal codec_tag upper case converted from avctx codec_tag
     /* the following fields are managed internally by the encoder */
@@ -151,10 +154,10 @@ typedef struct MpegEncContext {
     Picture next_picture;
 
     /**
-     * Reference to the source picture for encoding.
+     * copy of the source picture structure for encoding.
      * note, linesize & data, might not match the source picture (for field pictures)
      */
-    AVFrame *new_picture;
+    Picture new_picture;
 
     /**
      * copy of the current picture structure.
@@ -414,6 +417,9 @@ typedef struct MpegEncContext {
     int inter_intra_pred;
     int mspel;
 
+    /* SpeedHQ specific */
+    int slice_start;
+
     /* decompression specific */
     GetBitContext gb;
 
@@ -536,6 +542,10 @@ typedef struct MpegEncContext {
     int noise_reduction;
 
     int intra_penalty;
+
+#if FF_API_MPEGVIDEO_OPTS || FF_API_MJPEG_PRED
+    int dummy;               ///< used as target for deprecated options
+#endif
 } MpegEncContext;
 
 

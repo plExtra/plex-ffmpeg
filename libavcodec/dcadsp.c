@@ -485,7 +485,6 @@ av_cold void ff_dcadsp_init(DCADSPContext *s)
     s->lbr_bank = lbr_bank_c;
     s->lfe_iir = lfe_iir_c;
 
-#if ARCH_X86
-    ff_dcadsp_init_x86(s);
-#endif
+    if (ARCH_X86)
+        ff_dcadsp_init_x86(s);
 }

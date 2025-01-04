@@ -25,9 +25,8 @@
 #include "libavutil/log.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/rational.h"
-#include "libavutil/uuid.h"
 
-typedef AVUUID UID;
+typedef uint8_t UID[16];
 
 enum MXFMetadataSetType {
     AnyType,

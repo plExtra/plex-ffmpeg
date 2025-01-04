@@ -30,6 +30,14 @@
 #include "config.h"
 #include "config_components.h"
 #include "libavutil/thread.h"
+
+#include "avcodec.h"
+#include "internal.h"
+#include "version.h"
+#include "libavutil/extlib.h"
+
+#include "libavutil/avassert.h" //PLEX
+
 #include "codec.h"
 #include "codec_id.h"
 #include "codec_internal.h"
@@ -152,6 +160,7 @@ extern const FFCodec ff_h264_decoder;
 extern const FFCodec ff_h264_crystalhd_decoder;
 extern const FFCodec ff_h264_v4l2m2m_decoder;
 extern const FFCodec ff_h264_mediacodec_decoder;
+extern const FFCodec ff_h264_mediacodec_encoder;
 extern const FFCodec ff_h264_mmal_decoder;
 extern const FFCodec ff_h264_qsv_decoder;
 extern const FFCodec ff_h264_rkmpp_decoder;
@@ -254,8 +263,6 @@ extern const FFCodec ff_pgm_decoder;
 extern const FFCodec ff_pgmyuv_encoder;
 extern const FFCodec ff_pgmyuv_decoder;
 extern const FFCodec ff_pgx_decoder;
-extern const FFCodec ff_phm_encoder;
-extern const FFCodec ff_phm_decoder;
 extern const FFCodec ff_photocd_decoder;
 extern const FFCodec ff_pictor_decoder;
 extern const FFCodec ff_pixlet_decoder;
@@ -271,8 +278,6 @@ extern const FFCodec ff_prosumer_decoder;
 extern const FFCodec ff_psd_decoder;
 extern const FFCodec ff_ptx_decoder;
 extern const FFCodec ff_qdraw_decoder;
-extern const FFCodec ff_qoi_encoder;
-extern const FFCodec ff_qoi_decoder;
 extern const FFCodec ff_qpeg_decoder;
 extern const FFCodec ff_qtrle_encoder;
 extern const FFCodec ff_qtrle_decoder;
@@ -351,8 +356,6 @@ extern const FFCodec ff_v408_decoder;
 extern const FFCodec ff_v410_encoder;
 extern const FFCodec ff_v410_decoder;
 extern const FFCodec ff_vb_decoder;
-extern const FFCodec ff_vbn_encoder;
-extern const FFCodec ff_vbn_decoder;
 extern const FFCodec ff_vble_decoder;
 extern const FFCodec ff_vc1_decoder;
 extern const FFCodec ff_vc1_crystalhd_decoder;
@@ -720,6 +723,22 @@ extern const FFCodec ff_xsub_encoder;
 extern const FFCodec ff_xsub_decoder;
 
 /* external libraries */
+//PLEX
+extern const FFCodec ff_mp1_mediacodecndk_decoder;
+extern const FFCodec ff_mp2_mediacodecndk_decoder;
+extern const FFCodec ff_mp3_mediacodecndk_decoder;
+extern const FFCodec ff_eac3_mf_decoder;
+extern const FFCodec ff_wmalossless_mf_decoder;
+extern const FFCodec ff_wmapro_mf_decoder;
+extern const FFCodec ff_wmav1_mf_decoder;
+extern const FFCodec ff_wmav2_mf_decoder;
+extern const FFCodec ff_wmavoice_mf_decoder;
+//
+extern const FFCodec ff_eac3_eae_encoder;
+extern const FFCodec ff_eac3_eae_decoder;
+extern const FFCodec ff_truehd_eae_decoder;
+extern const FFCodec ff_mlp_eae_decoder;
+//PLEX
 extern const FFCodec ff_aac_at_encoder;
 extern const FFCodec ff_aac_at_decoder;
 extern const FFCodec ff_ac3_at_decoder;
@@ -755,8 +774,6 @@ extern const FFCodec ff_libgsm_ms_encoder;
 extern const FFCodec ff_libgsm_ms_decoder;
 extern const FFCodec ff_libilbc_encoder;
 extern const FFCodec ff_libilbc_decoder;
-extern const FFCodec ff_libjxl_decoder;
-extern const FFCodec ff_libjxl_encoder;
 extern const FFCodec ff_libmp3lame_encoder;
 extern const FFCodec ff_libopencore_amrnb_encoder;
 extern const FFCodec ff_libopencore_amrnb_decoder;
@@ -813,6 +830,21 @@ extern const FFCodec ff_ac3_mf_encoder;
 extern const FFCodec ff_h263_v4l2m2m_encoder;
 extern const FFCodec ff_libaom_av1_decoder;
 /* hwaccel hooks only, so prefer external decoders */
+
+//PLEX
+extern const FFCodec ff_h264_mediacodecndk_encoder;
+extern const FFCodec ff_h264_mediacodecndk_decoder;
+extern const FFCodec ff_h264_omx_decoder;
+extern const FFCodec ff_hevc_mediacodecndk_decoder;
+extern const FFCodec ff_hevc_omx_decoder;
+extern const FFCodec ff_mpeg2_mediacodecndk_decoder;
+extern const FFCodec ff_mpeg4_mediacodecndk_decoder;
+extern const FFCodec ff_mpeg4_omx_decoder;
+extern const FFCodec ff_vc1_mediacodecndk_decoder;
+extern const FFCodec ff_vp8_mediacodecndk_decoder;
+extern const FFCodec ff_vp9_mediacodecndk_decoder;
+//PLEX^
+
 extern const FFCodec ff_av1_decoder;
 extern const FFCodec ff_av1_cuvid_decoder;
 extern const FFCodec ff_av1_qsv_decoder;
@@ -830,6 +862,7 @@ extern const FFCodec ff_h264_videotoolbox_encoder;
 extern const FFCodec ff_hevc_amf_encoder;
 extern const FFCodec ff_hevc_cuvid_decoder;
 extern const FFCodec ff_hevc_mediacodec_decoder;
+extern const FFCodec ff_hevc_mediacodec_encoder;
 extern const FFCodec ff_hevc_mf_encoder;
 extern const FFCodec ff_hevc_nvenc_encoder;
 extern const FFCodec ff_hevc_qsv_encoder;
@@ -863,6 +896,11 @@ extern const FFCodec ff_vp9_qsv_decoder;
 extern const FFCodec ff_vp9_vaapi_encoder;
 extern const FFCodec ff_vp9_qsv_encoder;
 
+extern const FFCodec ff_fake_avi_decoder;
+//PLEX^
+extern const FFCodec ff_aac_lc_decoder;
+//PLEX^
+
 // The iterate API is not usable with ossfuzz due to the excessive size of binaries created
 #if CONFIG_OSSFUZZ
 const FFCodec * codec_list[] = {
@@ -874,6 +912,13 @@ const FFCodec * codec_list[] = {
 #include "libavcodec/codec_list.c"
 #endif
 
+//PLEX
+#define NB_BUILTIN_CODECS ((sizeof(codec_list) / sizeof(codec_list[0])) - 1)
+static AVMutex register_mutex = AV_MUTEX_INITIALIZER;
+static FFCodec **dynloaded_codecs = NULL;
+static int       nb_dynloaded_codecs = 0;
+//PLEX
+
 static AVOnce av_codec_static_init = AV_ONCE_INIT;
 static void av_codec_init_static(void)
 {
@@ -881,14 +926,39 @@ static void av_codec_init_static(void)
         if (codec_list[i]->init_static_data)
             codec_list[i]->init_static_data((FFCodec*)codec_list[i]);
     }
+
+    ff_avcodec_scan_new_things();
 }
 
 const AVCodec *av_codec_iterate(void **opaque)
 {
     uintptr_t i = (uintptr_t)*opaque;
-    const FFCodec *c = codec_list[i];
+
+//PLEX
+    const FFCodec *c;
 
     ff_thread_once(&av_codec_static_init, av_codec_init_static);
+
+    if (i == 0)
+        ff_avcodec_scan_new_things();
+
+    if (i >= NB_BUILTIN_CODECS) {
+        FFCodec *ret = NULL;
+        i -= NB_BUILTIN_CODECS;
+        ff_mutex_lock(&register_mutex);
+        if (i < nb_dynloaded_codecs)
+            ret = dynloaded_codecs[i];
+        ff_mutex_unlock(&register_mutex);
+        if (ret) {
+            *opaque = (void*)(NB_BUILTIN_CODECS + i + 1);
+            return &ret->p;
+        } else {
+            i = NB_BUILTIN_CODECS;
+        }
+    }
+
+    c = codec_list[i];
+//PLEX
 
     if (c) {
         *opaque = (void*)(i + 1);
@@ -896,6 +966,53 @@ const AVCodec *av_codec_iterate(void **opaque)
     }
     return NULL;
 }
+
+
+//PLEX
+static void dynload_register_codec(FFCodec *codec)
+{
+    int i;
+    int is_aac = !strcmp(codec->p.name, "aac");
+    int is_aac_lc = !strcmp(codec->p.name, "aac_lc");
+    if (codec->init_static_data)
+        codec->init_static_data(codec);
+
+    ff_mutex_lock(&register_mutex);
+
+    if (av_codec_is_decoder(&codec->p) && is_aac) {
+        for (i = 0; i < nb_dynloaded_codecs; i++) {
+            if (!strcmp(dynloaded_codecs[i]->p.name, "aac_lc")) {
+                dynloaded_codecs[i] = codec;
+                goto end;
+            }
+        }
+    } else if (is_aac_lc) {
+        for (i = 0; i < nb_dynloaded_codecs; i++) {
+            if (av_codec_is_decoder(&dynloaded_codecs[i]->p) && !strcmp(dynloaded_codecs[i]->p.name, "aac")) {
+                goto end;
+            }
+        }
+    }
+
+    if (!av_dynarray2_add((void**)&dynloaded_codecs, &nb_dynloaded_codecs, sizeof(codec), (void*)&codec))
+        av_assert0(!"Failed to reallocate dynamic codec array");
+
+end:
+    ff_mutex_unlock(&register_mutex);
+}
+
+static FFLibrary ff_library = {
+    .av_vlog = av_vlog,
+    .av_version_info = av_version_info,
+    .avcodec_version = avcodec_version,
+    .avcodec_register = dynload_register_codec,
+};
+
+void ff_avcodec_scan_new_things(void)
+{
+    avpriv_load_new_libs(&ff_library);
+}
+//PLEX
 
 static enum AVCodecID remap_deprecated_codec_id(enum AVCodecID id)
 {
@@ -908,6 +1025,8 @@ static enum AVCodecID remap_deprecated_codec_id(enum AVCodecID id)
 
 static const AVCodec *find_codec(enum AVCodecID id, int (*x)(const AVCodec *))
 {
+    const AVCodec *fallback = NULL; //PLEX
+    const AVCodecDescriptor *codec_desc = avcodec_descriptor_get(id); //PLEX
     const AVCodec *p, *experimental = NULL;
     void *i = 0;
 
@@ -919,10 +1038,17 @@ static const AVCodec *find_codec(enum AVCodecID id, int (*x)(const AVCodec *))
         if (p->id == id) {
             if (p->capabilities & AV_CODEC_CAP_EXPERIMENTAL && !experimental) {
                 experimental = p;
-            } else
+            } else if (codec_desc && strcmp(codec_desc->name, p->name) == 0) {
                 return p;
+            } else if (!fallback)
+                fallback = p;
         }
     }
+
+    //PLEX
+    if (fallback)
+        return fallback;
+    //PLEX
 
     return experimental;
 }

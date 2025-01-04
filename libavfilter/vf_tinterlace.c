@@ -269,17 +269,15 @@ static int config_out_props(AVFilterLink *outlink)
             tinterlace->lowpass_line = lowpass_line_complex_c_16;
         else
             tinterlace->lowpass_line = lowpass_line_complex_c;
-#if ARCH_X86
-        ff_tinterlace_init_x86(tinterlace);
-#endif
+        if (ARCH_X86)
+            ff_tinterlace_init_x86(tinterlace);
     } else if (tinterlace->flags & TINTERLACE_FLAG_VLPF) {
         if (tinterlace->csp->comp[0].depth > 8)
             tinterlace->lowpass_line = lowpass_line_c_16;
         else
             tinterlace->lowpass_line = lowpass_line_c;
-#if ARCH_X86
-        ff_tinterlace_init_x86(tinterlace);
-#endif
+        if (ARCH_X86)
+            ff_tinterlace_init_x86(tinterlace);
     }
 
     av_log(ctx, AV_LOG_VERBOSE, "mode:%d filter:%s h:%d -> h:%d\n", tinterlace->mode,

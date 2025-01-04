@@ -207,11 +207,12 @@ static av_cold int dpcm_decode_init(AVCodecContext *avctx)
 }
 
 
-static int dpcm_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int dpcm_decode_frame(AVCodecContext *avctx, void *data,
                              int *got_frame_ptr, AVPacket *avpkt)
 {
     int buf_size = avpkt->size;
     DPCMContext *s = avctx->priv_data;
+    AVFrame *frame = data;
     int out = 0, ret;
     int predictor[2];
     int ch = 0;
@@ -418,7 +419,7 @@ const FFCodec ff_ ## name_ ## _decoder = {                  \
     .p.capabilities = AV_CODEC_CAP_DR1,                     \
     .priv_data_size = sizeof(DPCMContext),                  \
     .init           = dpcm_decode_init,                     \
-    FF_CODEC_DECODE_CB(dpcm_decode_frame),                  \
+    .decode         = dpcm_decode_frame,                    \
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,         \
 }
 

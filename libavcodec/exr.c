@@ -1241,8 +1241,7 @@ static int decode_block(AVCodecContext *avctx, void *tdata,
         td->ysize = FFMIN(s->tile_attr.ySize, s->ydelta - tile_y * s->tile_attr.ySize);
         td->xsize = FFMIN(s->tile_attr.xSize, s->xdelta - tile_x * s->tile_attr.xSize);
 
-        if (td->xsize * (uint64_t)s->current_channel_offset > INT_MAX ||
-            av_image_check_size2(td->xsize, td->ysize, s->avctx->max_pixels, AV_PIX_FMT_NONE, 0, s->avctx) < 0)
+        if (td->xsize * (uint64_t)s->current_channel_offset > INT_MAX)
             return AVERROR_INVALIDDATA;
 
         td->channel_line_size = td->xsize * s->current_channel_offset;/* uncompress size of one line */
@@ -1266,8 +1265,7 @@ static int decode_block(AVCodecContext *avctx, void *tdata,
         td->ysize          = FFMIN(s->scan_lines_per_block, s->ymax - line + 1); /* s->ydelta - line ?? */
         td->xsize          = s->xdelta;
 
-        if (td->xsize * (uint64_t)s->current_channel_offset > INT_MAX ||
-            av_image_check_size2(td->xsize, td->ysize, s->avctx->max_pixels, AV_PIX_FMT_NONE, 0, s->avctx) < 0)
+        if (td->xsize * (uint64_t)s->current_channel_offset > INT_MAX)
             return AVERROR_INVALIDDATA;
 
         td->channel_line_size = td->xsize * s->current_channel_offset;/* uncompress size of one line */
@@ -1835,8 +1833,8 @@ static int decode_header(EXRContext *s, AVFrame *frame)
             dx = bytestream2_get_le32(gb);
             dy = bytestream2_get_le32(gb);
 
-            s->w = (unsigned)dx - sx + 1;
-            s->h = (unsigned)dy - sy + 1;
+            s->w = dx - sx + 1;
+            s->h = dy - sy + 1;
 
             continue;
         } else if ((var_size = check_header_variable(s, "lineOrder",
@@ -2025,11 +2023,12 @@ fail:
     return ret;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame, AVPacket *avpkt)
 {
     EXRContext *s = avctx->priv_data;
     GetByteContext *gb = &s->gb;
+    AVFrame *picture = data;
     uint8_t *ptr;
 
     int i, y, ret, ymax;
@@ -2350,7 +2349,7 @@ const FFCodec ff_exr_decoder = {
     .priv_data_size   = sizeof(EXRContext),
     .init             = decode_init,
     .close            = decode_end,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode           = decode_frame,
     .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
                         AV_CODEC_CAP_SLICE_THREADS,
     .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE,

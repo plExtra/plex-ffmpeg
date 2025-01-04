@@ -227,8 +227,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     AVFilterLink *outlink = ctx->outputs[0];
 
     if (s->qp) {
-        enum AVVideoEncParamsType qp_type;
-        int qstride, ret;
+        int qstride, qp_type, ret;
         int8_t *qp_table;
 
         ret = ff_qp_table_extract(frame, &qp_table, &qstride, NULL, &qp_type);

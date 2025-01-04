@@ -26,6 +26,8 @@
  * IFF ACBM/ANIM/DEEP/ILBM/PBM/RGB8/RGBN bitmap decoder
  */
 
+#include "config_components.h"
+
 #include <stdint.h>
 
 #include "libavutil/imgutils.h"
@@ -1525,10 +1527,12 @@ static int unsupported(AVCodecContext *avctx)
     return AVERROR_INVALIDDATA;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
-                        int *got_frame, AVPacket *avpkt)
+static int decode_frame(AVCodecContext *avctx,
+                        void *data, int *got_frame,
+                        AVPacket *avpkt)
 {
     IffContext *s          = avctx->priv_data;
+    AVFrame *frame         = data;
     const uint8_t *buf     = avpkt->data;
     int buf_size           = avpkt->size;
     const uint8_t *buf_end = buf + buf_size;
@@ -1906,6 +1910,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     return buf_size;
 }
 
+#if CONFIG_IFF_ILBM_DECODER
 const FFCodec ff_iff_ilbm_decoder = {
     .p.name         = "iff",
     .p.long_name    = NULL_IF_CONFIG_SMALL("IFF ACBM/ANIM/DEEP/ILBM/PBM/RGB8/RGBN"),
@@ -1914,7 +1919,8 @@ const FFCodec ff_iff_ilbm_decoder = {
     .priv_data_size = sizeof(IffContext),
     .init           = decode_init,
     .close          = decode_end,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
+#endif

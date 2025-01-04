@@ -171,7 +171,7 @@ static int parse_coding_header(DCACoreDecoder *s, enum HeaderType header, int xc
         }
         av_assert1(s->nchannels <= DCA_CHANNELS - 2);
 
-        s->ch_mask = audio_mode_ch_mask[s->audio_mode];
+        s->ch_mask = ff_dca_audio_mode_ch_mask[s->audio_mode];
 
         // Add LFE channel if present
         if (s->lfe_present)
@@ -1797,7 +1797,7 @@ static int parse_optional_info(DCACoreDecoder *s)
     return 0;
 }
 
-int ff_dca_core_parse(DCACoreDecoder *s, const uint8_t *data, int size)
+int ff_dca_core_parse(DCACoreDecoder *s, uint8_t *data, int size)
 {
     int ret;
 
@@ -1830,7 +1830,7 @@ int ff_dca_core_parse(DCACoreDecoder *s, const uint8_t *data, int size)
     return 0;
 }
 
-int ff_dca_core_parse_exss(DCACoreDecoder *s, const uint8_t *data, DCAExssAsset *asset)
+int ff_dca_core_parse_exss(DCACoreDecoder *s, uint8_t *data, DCAExssAsset *asset)
 {
     AVCodecContext *avctx = s->avctx;
     DCAContext *dca = avctx->priv_data;
@@ -1861,7 +1861,7 @@ int ff_dca_core_parse_exss(DCACoreDecoder *s, const uint8_t *data, DCAExssAsset 
             if (avctx->err_recognition & AV_EF_EXPLODE)
                 return ret;
             s->nchannels = ff_dca_channels[s->audio_mode];
-            s->ch_mask = audio_mode_ch_mask[s->audio_mode];
+            s->ch_mask = ff_dca_audio_mode_ch_mask[s->audio_mode];
             if (s->lfe_present)
                 s->ch_mask |= DCA_SPEAKER_MASK_LFE1;
         } else {

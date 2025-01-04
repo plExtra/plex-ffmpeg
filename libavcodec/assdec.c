@@ -40,9 +40,11 @@ static av_cold int ass_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int ass_decode_frame(AVCodecContext *avctx, AVSubtitle *sub,
-                            int *got_sub_ptr, const AVPacket *avpkt)
+static int ass_decode_frame(AVCodecContext *avctx, void *data, int *got_sub_ptr,
+                            AVPacket *avpkt)
 {
+    AVSubtitle *sub = data;
+
     if (avpkt->size <= 0)
         return avpkt->size;
 
@@ -68,7 +70,7 @@ const FFCodec ff_ssa_decoder = {
     .p.type       = AVMEDIA_TYPE_SUBTITLE,
     .p.id         = AV_CODEC_ID_ASS,
     .init         = ass_decode_init,
-    FF_CODEC_DECODE_SUB_CB(ass_decode_frame),
+    .decode       = ass_decode_frame,
     .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif
@@ -80,7 +82,7 @@ const FFCodec ff_ass_decoder = {
     .p.type       = AVMEDIA_TYPE_SUBTITLE,
     .p.id         = AV_CODEC_ID_ASS,
     .init         = ass_decode_init,
-    FF_CODEC_DECODE_SUB_CB(ass_decode_frame),
+    .decode       = ass_decode_frame,
     .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };
 #endif

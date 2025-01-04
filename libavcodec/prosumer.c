@@ -144,10 +144,11 @@ static void vertical_predict(uint32_t *dst, int offset, const uint32_t *src, int
     }
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame, AVPacket *avpkt)
 {
     ProSumerContext *s = avctx->priv_data;
+    AVFrame * const frame = data;
     int ret;
 
     if (avpkt->size <= 32)
@@ -372,7 +373,7 @@ const FFCodec ff_prosumer_decoder = {
     .p.id           = AV_CODEC_ID_PROSUMER,
     .priv_data_size = sizeof(ProSumerContext),
     .init           = decode_init,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .close          = decode_close,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |

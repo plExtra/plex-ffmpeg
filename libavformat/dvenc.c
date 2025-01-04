@@ -31,14 +31,15 @@
 
 #include "libavutil/time_internal.h"
 #include "avformat.h"
+#include "internal.h"
 #include "libavcodec/dv_profile.h"
 #include "libavcodec/dv.h"
 #include "dv.h"
-#include "mux.h"
 #include "libavutil/avassert.h"
 #include "libavutil/fifo.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/opt.h"
 #include "libavutil/timecode.h"
 
 #define MAX_AUDIO_FRAME_SIZE 192000 // 1 second of 48khz 32-bit audio
@@ -245,7 +246,7 @@ static void dv_inject_metadata(DVMuxContext *c, uint8_t* frame)
 
 static int dv_assemble_frame(AVFormatContext *s,
                              DVMuxContext *c, AVStream* st,
-                             const uint8_t *data, int data_size, uint8_t **frame)
+                             uint8_t* data, int data_size, uint8_t** frame)
 {
     int i, reqasize;
 

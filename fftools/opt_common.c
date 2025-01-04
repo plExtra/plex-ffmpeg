@@ -51,9 +51,6 @@
 #include "libavdevice/avdevice.h"
 #include "libavdevice/version.h"
 
-#include "libavfilter/avfilter.h"
-#include "libavfilter/version.h"
-
 #include "libswscale/swscale.h"
 #include "libswscale/version.h"
 
@@ -675,8 +672,6 @@ int show_codecs(void *optctx, const char *opt, const char *arg)
            " ..V... = Video codec\n"
            " ..A... = Audio codec\n"
            " ..S... = Subtitle codec\n"
-           " ..D... = Data codec\n"
-           " ..T... = Attachment codec\n"
            " ...I.. = Intra frame-only codec\n"
            " ....L. = Lossy compression\n"
            " .....S = Lossless compression\n"
@@ -1002,7 +997,7 @@ int show_layouts(void *optctx, const char *opt, const char *arg)
            "NAME           DESCRIPTION\n");
     for (i = 0; i < 63; i++) {
         av_channel_name(buf, sizeof(buf), i);
-        if (strstr(buf, "USR"))
+        if (!strcmp(buf, "?"))
             continue;
         av_channel_description(buf2, sizeof(buf2), i);
         printf("%-14s %s\n", buf, buf2);
@@ -1011,14 +1006,11 @@ int show_layouts(void *optctx, const char *opt, const char *arg)
            "NAME           DECOMPOSITION\n");
     while (ch_layout = av_channel_layout_standard(&iter)) {
             av_channel_layout_describe(ch_layout, buf, sizeof(buf));
+            av_channel_name(buf2, sizeof(buf2), i);
             printf("%-14s ", buf);
-            for (i = 0; i < 63; i++) {
-                int idx = av_channel_layout_index_from_channel(ch_layout, i);
-                if (idx >= 0) {
-                    av_channel_name(buf2, sizeof(buf2), i);
-                    printf("%s%s", idx ? "+" : "", buf2);
-                }
-            }
+            for (i = 0; i < 63; i++)
+                if (av_channel_layout_index_from_channel(ch_layout, i) >= 0)
+                    printf("%s%s", i ? "+" : "", buf2);
             printf("\n");
     }
     return 0;
@@ -1245,6 +1237,13 @@ int opt_loglevel(void *optctx, const char *opt, const char *arg)
     int level = av_log_get_level();
     int cmd, i = 0;
 
+//PLEX
+    typedef void (*av_log_set_level_fn)(int);
+    av_log_set_level_fn set_level_fn = (av_log_set_level_fn) optctx;
+    if (!set_level_fn)
+        set_level_fn = &av_log_set_level;
+//PLEX
+
     av_assert0(arg);
     while (*arg) {
         token = arg;
@@ -1299,7 +1298,7 @@ int opt_loglevel(void *optctx, const char *opt, const char *arg)
 
 end:
     av_log_set_flags(flags);
-    av_log_set_level(level);
+    set_level_fn(level); //PLEX
     return 0;
 }
 

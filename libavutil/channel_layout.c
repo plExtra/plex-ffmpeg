@@ -89,8 +89,7 @@ void av_channel_name_bprint(AVBPrint *bp, enum AVChannel channel_id)
     if (channel_id >= AV_CHAN_AMBISONIC_BASE &&
         channel_id <= AV_CHAN_AMBISONIC_END)
         av_bprintf(bp, "AMBI%d", channel_id - AV_CHAN_AMBISONIC_BASE);
-    else if ((unsigned)channel_id < FF_ARRAY_ELEMS(channel_names) &&
-             channel_names[channel_id].name)
+    else if ((unsigned)channel_id < FF_ARRAY_ELEMS(channel_names))
         av_bprintf(bp, "%s", channel_names[channel_id].name);
     else if (channel_id == AV_CHAN_NONE)
         av_bprintf(bp, "NONE");
@@ -116,11 +115,8 @@ void av_channel_description_bprint(AVBPrint *bp, enum AVChannel channel_id)
     if (channel_id >= AV_CHAN_AMBISONIC_BASE &&
         channel_id <= AV_CHAN_AMBISONIC_END)
         av_bprintf(bp, "ambisonic ACN %d", channel_id - AV_CHAN_AMBISONIC_BASE);
-    else if ((unsigned)channel_id < FF_ARRAY_ELEMS(channel_names) &&
-             channel_names[channel_id].description)
+    else if ((unsigned)channel_id < FF_ARRAY_ELEMS(channel_names))
         av_bprintf(bp, "%s", channel_names[channel_id].description);
-    else if (channel_id == AV_CHAN_NONE)
-        av_bprintf(bp, "none");
     else
         av_bprintf(bp, "user %d", channel_id);
 }
@@ -989,16 +985,12 @@ uint64_t av_channel_layout_subset(const AVChannelLayout *channel_layout,
     uint64_t ret = 0;
     int i;
 
-    switch (channel_layout->order) {
-    case AV_CHANNEL_ORDER_NATIVE:
-    case AV_CHANNEL_ORDER_AMBISONIC:
+    if (channel_layout->order == AV_CHANNEL_ORDER_NATIVE)
         return channel_layout->u.mask & mask;
-    case AV_CHANNEL_ORDER_CUSTOM:
-        for (i = 0; i < 64; i++)
-            if (mask & (1ULL << i) && av_channel_layout_index_from_channel(channel_layout, i) >= 0)
-                ret |= (1ULL << i);
-        break;
-    }
+
+    for (i = 0; i < 64; i++)
+        if (mask & (1ULL << i) && av_channel_layout_index_from_channel(channel_layout, i) >= 0)
+            ret |= (1ULL << i);
 
     return ret;
 }

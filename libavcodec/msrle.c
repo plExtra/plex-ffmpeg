@@ -82,8 +82,9 @@ static av_cold int msrle_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int msrle_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
-                              int *got_frame, AVPacket *avpkt)
+static int msrle_decode_frame(AVCodecContext *avctx,
+                              void *data, int *got_frame,
+                              AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
@@ -108,7 +109,7 @@ static int msrle_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     if (avctx->height * istride == avpkt->size) { /* assume uncompressed */
         int linesize = av_image_get_linesize(avctx->pix_fmt, avctx->width, 0);
         uint8_t *ptr = s->frame->data[0];
-        const uint8_t *buf = avpkt->data + (avctx->height-1)*istride;
+        uint8_t *buf = avpkt->data + (avctx->height-1)*istride;
         int i, j;
 
         if (linesize < 0)
@@ -133,7 +134,7 @@ static int msrle_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
         ff_msrle_decode(avctx, s->frame, avctx->bits_per_coded_sample, &s->gb);
     }
 
-    if ((ret = av_frame_ref(rframe, s->frame)) < 0)
+    if ((ret = av_frame_ref(data, s->frame)) < 0)
         return ret;
 
     *got_frame      = 1;
@@ -167,7 +168,7 @@ const FFCodec ff_msrle_decoder = {
     .priv_data_size = sizeof(MsrleContext),
     .init           = msrle_decode_init,
     .close          = msrle_decode_end,
-    FF_CODEC_DECODE_CB(msrle_decode_frame),
+    .decode         = msrle_decode_frame,
     .flush          = msrle_decode_flush,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,

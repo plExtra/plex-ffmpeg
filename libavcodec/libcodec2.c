@@ -130,12 +130,13 @@ static av_cold int libcodec2_close(AVCodecContext *avctx)
     return 0;
 }
 
-static int libcodec2_decode(AVCodecContext *avctx, AVFrame *frame,
+static int libcodec2_decode(AVCodecContext *avctx, void *data,
                             int *got_frame_ptr, AVPacket *pkt)
 {
     LibCodec2Context *c2 = avctx->priv_data;
+    AVFrame *frame = data;
     int ret, nframes, i;
-    const uint8_t *input;
+    uint8_t *input;
     int16_t *output;
 
     nframes           = pkt->size / avctx->block_align;
@@ -188,7 +189,7 @@ const FFCodec ff_libcodec2_decoder = {
     .priv_data_size         = sizeof(LibCodec2Context),
     .init                   = libcodec2_init_decoder,
     .close                  = libcodec2_close,
-    FF_CODEC_DECODE_CB(libcodec2_decode),
+    .decode                 = libcodec2_decode,
 #if FF_API_OLD_CHANNEL_LAYOUT
     .p.channel_layouts      = (const uint64_t[]) { AV_CH_LAYOUT_MONO, 0 },
 #endif
@@ -207,7 +208,7 @@ const FFCodec ff_libcodec2_encoder = {
     .priv_data_size         = sizeof(LibCodec2Context),
     .init                   = libcodec2_init_encoder,
     .close                  = libcodec2_close,
-    FF_CODEC_ENCODE_CB(libcodec2_encode),
+    .encode2                = libcodec2_encode,
 #if FF_API_OLD_CHANNEL_LAYOUT
     .p.channel_layouts      = (const uint64_t[]) { AV_CH_LAYOUT_MONO, 0 },
 #endif

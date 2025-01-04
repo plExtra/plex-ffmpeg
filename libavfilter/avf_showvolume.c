@@ -190,9 +190,6 @@ static int config_input(AVFilterLink *inlink)
         s->persistent_max_frames = (int) FFMAX(av_q2d(s->frame_rate) * s->draw_persistent_duration, 1.);
         s->max_persistent = av_calloc(inlink->ch_layout.nb_channels * s->persistent_max_frames, sizeof(*s->max_persistent));
         s->nb_frames_max_display = av_calloc(inlink->ch_layout.nb_channels * s->persistent_max_frames, sizeof(*s->nb_frames_max_display));
-        if (!s->max_persistent ||
-            !s->nb_frames_max_display)
-            return AVERROR(ENOMEM);
     }
     return 0;
 }
@@ -213,7 +210,6 @@ static int config_output(AVFilterLink *outlink)
 
     outlink->sample_aspect_ratio = (AVRational){1,1};
     outlink->frame_rate = s->frame_rate;
-    outlink->time_base = av_inv_q(outlink->frame_rate);
 
     for (ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
         int i;
@@ -339,7 +335,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *insamples)
         }
         clear_picture(s, outlink);
     }
-    s->out->pts = av_rescale_q(insamples->pts, inlink->time_base, outlink->time_base);
+    s->out->pts = insamples->pts;
 
     if ((s->f < 1.) && (s->f > 0.)) {
         for (j = 0; j < outlink->h; j++) {
@@ -468,11 +464,6 @@ static int activate(AVFilterContext *ctx)
     if (ret > 0)
         return filter_frame(inlink, in);
 
-    if (ff_inlink_queued_samples(inlink) >= s->nb_samples) {
-        ff_filter_set_ready(ctx, 10);
-        return 0;
-    }
-
     FF_FILTER_FORWARD_STATUS(inlink, outlink);
     FF_FILTER_FORWARD_WANTED(outlink, inlink);
 
@@ -488,8 +479,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_freep(&s->values);
     av_freep(&s->color_lut);
     av_freep(&s->max);
-    av_freep(&s->max_persistent);
-    av_freep(&s->nb_frames_max_display);
 }
 
 static const AVFilterPad showvolume_inputs[] = {

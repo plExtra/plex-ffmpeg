@@ -28,11 +28,13 @@
 #include "internal.h"
 #include "msrledec.h"
 
-static int bmp_decode_frame(AVCodecContext *avctx, AVFrame *p,
-                            int *got_frame, AVPacket *avpkt)
+static int bmp_decode_frame(AVCodecContext *avctx,
+                            void *data, int *got_frame,
+                            AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
+    AVFrame *p         = data;
     unsigned int fsize, hsize;
     int width, height;
     unsigned int depth;
@@ -370,5 +372,5 @@ const FFCodec ff_bmp_decoder = {
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_BMP,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    FF_CODEC_DECODE_CB(bmp_decode_frame),
+    .decode         = bmp_decode_frame,
 };

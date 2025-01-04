@@ -137,10 +137,11 @@ static int aptx_decode_samples(AptXContext *ctx,
     return ret;
 }
 
-static int aptx_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int aptx_decode_frame(AVCodecContext *avctx, void *data,
                              int *got_frame_ptr, AVPacket *avpkt)
 {
     AptXContext *s = avctx->priv_data;
+    AVFrame *frame = data;
     int pos, opos, channel, sample, ret;
 
     if (avpkt->size < s->block_size) {
@@ -181,7 +182,7 @@ const FFCodec ff_aptx_decoder = {
     .p.id                  = AV_CODEC_ID_APTX,
     .priv_data_size        = sizeof(AptXContext),
     .init                  = ff_aptx_init,
-    FF_CODEC_DECODE_CB(aptx_decode_frame),
+    .decode                = aptx_decode_frame,
     .p.capabilities        = AV_CODEC_CAP_DR1,
     .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
 #if FF_API_OLD_CHANNEL_LAYOUT
@@ -201,7 +202,7 @@ const FFCodec ff_aptx_hd_decoder = {
     .p.id                  = AV_CODEC_ID_APTX_HD,
     .priv_data_size        = sizeof(AptXContext),
     .init                  = ff_aptx_init,
-    FF_CODEC_DECODE_CB(aptx_decode_frame),
+    .decode                = aptx_decode_frame,
     .p.capabilities        = AV_CODEC_CAP_DR1,
     .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE,
 #if FF_API_OLD_CHANNEL_LAYOUT

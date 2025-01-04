@@ -74,8 +74,7 @@ static int aqt_read_header(AVFormatContext *s)
             new_event = 1;
             pos = avio_tell(s->pb);
             if (sub) {
-                if (frame >= sub->pts && (uint64_t)frame - sub->pts < INT64_MAX)
-                    sub->duration = frame - sub->pts;
+                sub->duration = frame - sub->pts;
                 sub = NULL;
             }
         } else if (*line) {

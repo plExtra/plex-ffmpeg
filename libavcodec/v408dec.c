@@ -32,9 +32,10 @@ static av_cold int v408_decode_init(AVCodecContext *avctx)
     return 0;
 }
 
-static int v408_decode_frame(AVCodecContext *avctx, AVFrame *pic,
+static int v408_decode_frame(AVCodecContext *avctx, void *data,
                              int *got_frame, AVPacket *avpkt)
 {
+    AVFrame *pic = data;
     const uint8_t *src = avpkt->data;
     uint8_t *y, *u, *v, *a;
     int i, j, ret;
@@ -88,7 +89,7 @@ const FFCodec ff_ayuv_decoder = {
     .p.type       = AVMEDIA_TYPE_VIDEO,
     .p.id         = AV_CODEC_ID_AYUV,
     .init         = v408_decode_init,
-    FF_CODEC_DECODE_CB(v408_decode_frame),
+    .decode       = v408_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };
@@ -100,7 +101,7 @@ const FFCodec ff_v408_decoder = {
     .p.type       = AVMEDIA_TYPE_VIDEO,
     .p.id         = AV_CODEC_ID_V408,
     .init         = v408_decode_init,
-    FF_CODEC_DECODE_CB(v408_decode_frame),
+    .decode       = v408_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

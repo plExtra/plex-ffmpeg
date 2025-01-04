@@ -187,9 +187,10 @@ static void backward_filter(RA288Context *ractx,
     memmove(hist, hist + n, move_size*sizeof(*hist));
 }
 
-static int ra288_decode_frame(AVCodecContext * avctx, AVFrame *frame,
+static int ra288_decode_frame(AVCodecContext * avctx, void *data,
                               int *got_frame_ptr, AVPacket *avpkt)
 {
+    AVFrame *frame     = data;
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size;
     float *out;
@@ -244,7 +245,7 @@ const FFCodec ff_ra_288_decoder = {
     .p.id           = AV_CODEC_ID_RA_288,
     .priv_data_size = sizeof(RA288Context),
     .init           = ra288_decode_init,
-    FF_CODEC_DECODE_CB(ra288_decode_frame),
+    .decode         = ra288_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

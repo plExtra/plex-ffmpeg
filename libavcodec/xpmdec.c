@@ -303,10 +303,11 @@ static int ascii2index(const uint8_t *cpixel, int cpp)
     return n;
 }
 
-static int xpm_decode_frame(AVCodecContext *avctx, AVFrame *p,
+static int xpm_decode_frame(AVCodecContext *avctx, void *data,
                             int *got_frame, AVPacket *avpkt)
 {
     XPMDecContext *x = avctx->priv_data;
+    AVFrame *p=data;
     const uint8_t *end, *ptr;
     int ncolors, cpp, ret, i, j;
     int64_t size;
@@ -444,5 +445,5 @@ const FFCodec ff_xpm_decoder = {
     .p.capabilities = AV_CODEC_CAP_DR1,
     .priv_data_size = sizeof(XPMDecContext),
     .close          = xpm_decode_close,
-    FF_CODEC_DECODE_CB(xpm_decode_frame),
+    .decode         = xpm_decode_frame,
 };

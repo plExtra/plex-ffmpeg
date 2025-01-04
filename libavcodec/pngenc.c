@@ -236,8 +236,7 @@ static void png_write_chunk(uint8_t **f, uint32_t tag,
     bytestream_put_be32(f, av_bswap32(tag));
     if (length > 0) {
         crc = av_crc(crc_table, crc, buf, length);
-        if (*f != buf)
-            memcpy(*f, buf, length);
+        memcpy(*f, buf, length);
         *f += length;
     }
     bytestream_put_be32(f, ~crc);
@@ -346,53 +345,10 @@ static int png_get_gama(enum AVColorTransferCharacteristic trc, uint8_t *buf)
     return 1;
 }
 
-static int png_write_iccp(PNGEncContext *s, const AVFrameSideData *sd)
-{
-    z_stream *const zstream = &s->zstream.zstream;
-    const AVDictionaryEntry *entry;
-    const char *name;
-    uint8_t *start, *buf;
-    int ret;
-
-    if (!sd || !sd->size)
-        return 0;
-    zstream->next_in  = sd->data;
-    zstream->avail_in = sd->size;
-
-    /* write the chunk contents first */
-    start = s->bytestream + 8; /* make room for iCCP tag + length */
-    buf = start;
-
-    /* profile description */
-    entry = av_dict_get(sd->metadata, "name", NULL, 0);
-    name = (entry && entry->value[0]) ? entry->value : "icc";
-    for (int i = 0;; i++) {
-        char c = (i == 79) ? 0 : name[i];
-        bytestream_put_byte(&buf, c);
-        if (!c)
-            break;
-    }
-
-    /* compression method and profile data */
-    bytestream_put_byte(&buf, 0);
-    zstream->next_out  = buf;
-    zstream->avail_out = s->bytestream_end - buf;
-    ret = deflate(zstream, Z_FINISH);
-    deflateReset(zstream);
-    if (ret != Z_STREAM_END)
-        return AVERROR_EXTERNAL;
-
-    /* rewind to the start and write the chunk header/crc */
-    png_write_chunk(&s->bytestream, MKTAG('i', 'C', 'C', 'P'), start,
-                    zstream->next_out - start);
-    return 0;
-}
-
 static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
 {
     AVFrameSideData *side_data;
     PNGEncContext *s = avctx->priv_data;
-    int ret;
 
     /* write png header */
     AV_WB32(s->buf, avctx->width);
@@ -445,11 +401,7 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
     if (png_get_gama(pict->color_trc, s->buf))
         png_write_chunk(&s->bytestream, MKTAG('g', 'A', 'M', 'A'), s->buf, 4);
 
-    side_data = av_frame_get_side_data(pict, AV_FRAME_DATA_ICC_PROFILE);
-    if ((ret = png_write_iccp(s, side_data)))
-        return ret;
-
-    /* put the palette if needed, must be after colorspace information */
+    /* put the palette if needed */
     if (s->color_type == PNG_COLOR_TYPE_PALETTE) {
         int has_alpha, alpha, i;
         unsigned int v;
@@ -573,34 +525,6 @@ the_end:
     return ret;
 }
 
-static int add_icc_profile_size(AVCodecContext *avctx, const AVFrame *pict,
-                                uint64_t *max_packet_size)
-{
-    PNGEncContext *s = avctx->priv_data;
-    const AVFrameSideData *sd;
-    const int hdr_size = 128;
-    uint64_t new_pkt_size;
-    uLong bound;
-
-    if (!pict)
-        return 0;
-    sd = av_frame_get_side_data(pict, AV_FRAME_DATA_ICC_PROFILE);
-    if (!sd || !sd->size)
-        return 0;
-    if (sd->size != (uLong) sd->size)
-        return AVERROR_INVALIDDATA;
-
-    bound = deflateBound(&s->zstream.zstream, sd->size);
-    if (bound > INT32_MAX - hdr_size)
-        return AVERROR_INVALIDDATA;
-
-    new_pkt_size = *max_packet_size + bound + hdr_size;
-    if (new_pkt_size < *max_packet_size)
-        return AVERROR_INVALIDDATA;
-    *max_packet_size = new_pkt_size;
-    return 0;
-}
-
 static int encode_png(AVCodecContext *avctx, AVPacket *pkt,
                       const AVFrame *pict, int *got_packet)
 {
@@ -617,8 +541,6 @@ static int encode_png(AVCodecContext *avctx, AVPacket *pkt,
             enc_row_size +
             12 * (((int64_t)enc_row_size + IOBUF_SIZE - 1) / IOBUF_SIZE) // IDAT * ceil(enc_row_size / IOBUF_SIZE)
         );
-    if ((ret = add_icc_profile_size(avctx, pict, &max_packet_size)))
-        return ret;
     ret = ff_alloc_packet(avctx, pkt, max_packet_size);
     if (ret < 0)
         return ret;
@@ -948,8 +870,6 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
             enc_row_size +
             (4 + 12) * (((int64_t)enc_row_size + IOBUF_SIZE - 1) / IOBUF_SIZE) // fdAT * ceil(enc_row_size / IOBUF_SIZE)
         );
-    if ((ret = add_icc_profile_size(avctx, pict, &max_packet_size)))
-        return ret;
     if (max_packet_size > INT_MAX)
         return AVERROR(ENOMEM);
 
@@ -988,7 +908,7 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
         // to have the image data write to the correct place in the buffer
         fctl_chunk.sequence_number = s->sequence_number;
         ++s->sequence_number;
-        s->bytestream += APNG_FCTL_CHUNK_SIZE + 12;
+        s->bytestream += 26 + 12;
 
         ret = apng_encode_frame(avctx, pict, &fctl_chunk, &s->last_frame_fctl);
         if (ret < 0)
@@ -1002,7 +922,7 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
 
     if (s->last_frame) {
         uint8_t* last_fctl_chunk_start = pkt->data;
-        uint8_t buf[APNG_FCTL_CHUNK_SIZE];
+        uint8_t buf[26];
         if (!s->extra_data_updated) {
             uint8_t *side_data = av_packet_new_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, s->extra_data_size);
             if (!side_data)
@@ -1020,7 +940,7 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
         AV_WB16(buf + 22, s->last_frame_fctl.delay_den);
         buf[24] = s->last_frame_fctl.dispose_op;
         buf[25] = s->last_frame_fctl.blend_op;
-        png_write_chunk(&last_fctl_chunk_start, MKTAG('f', 'c', 'T', 'L'), buf, sizeof(buf));
+        png_write_chunk(&last_fctl_chunk_start, MKTAG('f', 'c', 'T', 'L'), buf, 26);
 
         *got_packet = 1;
     }
@@ -1199,7 +1119,7 @@ const FFCodec ff_png_encoder = {
     .priv_data_size = sizeof(PNGEncContext),
     .init           = png_enc_init,
     .close          = png_enc_close,
-    FF_CODEC_ENCODE_CB(encode_png),
+    .encode2        = encode_png,
     .p.capabilities = AV_CODEC_CAP_FRAME_THREADS,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
@@ -1222,7 +1142,7 @@ const FFCodec ff_apng_encoder = {
     .priv_data_size = sizeof(PNGEncContext),
     .init           = png_enc_init,
     .close          = png_enc_close,
-    FF_CODEC_ENCODE_CB(encode_apng),
+    .encode2        = encode_apng,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
         AV_PIX_FMT_RGB48BE, AV_PIX_FMT_RGBA64BE,

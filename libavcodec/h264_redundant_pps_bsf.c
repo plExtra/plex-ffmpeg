@@ -21,7 +21,6 @@
 #include "libavutil/log.h"
 
 #include "bsf.h"
-#include "bsf_internal.h"
 #include "cbs.h"
 #include "cbs_bsf.h"
 #include "cbs_h264.h"
@@ -127,11 +126,11 @@ static const enum AVCodecID h264_redundant_pps_codec_ids[] = {
     AV_CODEC_ID_H264, AV_CODEC_ID_NONE,
 };
 
-const FFBitStreamFilter ff_h264_redundant_pps_bsf = {
-    .p.name         = "h264_redundant_pps",
-    .p.codec_ids    = h264_redundant_pps_codec_ids,
+const AVBitStreamFilter ff_h264_redundant_pps_bsf = {
+    .name           = "h264_redundant_pps",
     .priv_data_size = sizeof(H264RedundantPPSContext),
     .init           = &h264_redundant_pps_init,
     .close          = &ff_cbs_bsf_generic_close,
     .filter         = &ff_cbs_bsf_generic_filter,
+    .codec_ids      = h264_redundant_pps_codec_ids,
 };

@@ -20,7 +20,7 @@
  */
 
 #include "avformat.h"
-#include "mux.h"
+#include "internal.h"
 
 static int null_write_packet(struct AVFormatContext *s, AVPacket *pkt)
 {

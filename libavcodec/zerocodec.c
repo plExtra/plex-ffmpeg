@@ -29,10 +29,11 @@ typedef struct ZeroCodecContext {
     FFZStream zstream;
 } ZeroCodecContext;
 
-static int zerocodec_decode_frame(AVCodecContext *avctx, AVFrame *pic,
+static int zerocodec_decode_frame(AVCodecContext *avctx, void *data,
                                   int *got_frame, AVPacket *avpkt)
 {
     ZeroCodecContext *zc = avctx->priv_data;
+    AVFrame *pic         = data;
     AVFrame *prev_pic    = zc->previous_frame;
     z_stream *const zstream = &zc->zstream.zstream;
     uint8_t *prev        = prev_pic->data[0];
@@ -140,7 +141,7 @@ const FFCodec ff_zerocodec_decoder = {
     .p.id           = AV_CODEC_ID_ZEROCODEC,
     .priv_data_size = sizeof(ZeroCodecContext),
     .init           = zerocodec_decode_init,
-    FF_CODEC_DECODE_CB(zerocodec_decode_frame),
+    .decode         = zerocodec_decode_frame,
     .flush          = zerocodec_decode_flush,
     .close          = zerocodec_decode_close,
     .p.capabilities = AV_CODEC_CAP_DR1,

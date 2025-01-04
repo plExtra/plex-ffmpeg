@@ -9,11 +9,8 @@ AVCODECOBJS-$(CONFIG_G722DSP)           += g722dsp.o
 AVCODECOBJS-$(CONFIG_H264DSP)           += h264dsp.o
 AVCODECOBJS-$(CONFIG_H264PRED)          += h264pred.o
 AVCODECOBJS-$(CONFIG_H264QPEL)          += h264qpel.o
-AVCODECOBJS-$(CONFIG_IDCTDSP)           += idctdsp.o
 AVCODECOBJS-$(CONFIG_LLVIDDSP)          += llviddsp.o
 AVCODECOBJS-$(CONFIG_LLVIDENCDSP)       += llviddspenc.o
-AVCODECOBJS-$(CONFIG_ME_CMP)            += motion.o
-AVCODECOBJS-$(CONFIG_VC1DSP)            += vc1dsp.o
 AVCODECOBJS-$(CONFIG_VP8DSP)            += vp8dsp.o
 AVCODECOBJS-$(CONFIG_VIDEODSP)          += videodsp.o
 
@@ -38,12 +35,14 @@ CHECKASMOBJS-$(CONFIG_AVCODEC)          += $(AVCODECOBJS-yes)
 # libavfilter tests
 AVFILTEROBJS-$(CONFIG_AFIR_FILTER) += af_afir.o
 AVFILTEROBJS-$(CONFIG_BLEND_FILTER) += vf_blend.o
+AVFILTEROBJS-$(CONFIG_BWDIF_FILTER)      += vf_bwdif.o
 AVFILTEROBJS-$(CONFIG_COLORSPACE_FILTER) += vf_colorspace.o
 AVFILTEROBJS-$(CONFIG_EQ_FILTER)         += vf_eq.o
 AVFILTEROBJS-$(CONFIG_GBLUR_FILTER)      += vf_gblur.o
 AVFILTEROBJS-$(CONFIG_HFLIP_FILTER)      += vf_hflip.o
 AVFILTEROBJS-$(CONFIG_THRESHOLD_FILTER)  += vf_threshold.o
 AVFILTEROBJS-$(CONFIG_NLMEANS_FILTER)    += vf_nlmeans.o
+AVFILTEROBJS-$(CONFIG_YADIF_FILTER)      += vf_yadif.o
 
 CHECKASMOBJS-$(CONFIG_AVFILTER) += $(AVFILTEROBJS-yes)
 

@@ -288,11 +288,13 @@ static void tag_tree_code(Jpeg2000EncoderContext *s, Jpeg2000TgtNode *node, int 
 /** update the value in node */
 static void tag_tree_update(Jpeg2000TgtNode *node)
 {
+    int lev = 0;
     while (node->parent){
         if (node->parent->val <= node->val)
             break;
         node->parent->val = node->val;
         node = node->parent;
+        lev++;
     }
 }
 
@@ -1837,7 +1839,7 @@ const FFCodec ff_jpeg2000_encoder = {
     .p.id           = AV_CODEC_ID_JPEG2000,
     .priv_data_size = sizeof(Jpeg2000EncoderContext),
     .init           = j2kenc_init,
-    FF_CODEC_ENCODE_CB(encode_frame),
+    .encode2        = encode_frame,
     .close          = j2kenc_destroy,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_YUV444P, AV_PIX_FMT_GRAY8,

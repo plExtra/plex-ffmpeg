@@ -141,9 +141,8 @@ static int config_input(AVFilterLink *inlink)
         s->dsp.limiter = limiter16;
     }
 
-#if ARCH_X86
-    ff_limiter_init_x86(&s->dsp, desc->comp[0].depth);
-#endif
+    if (ARCH_X86)
+        ff_limiter_init_x86(&s->dsp, desc->comp[0].depth);
 
     return 0;
 }

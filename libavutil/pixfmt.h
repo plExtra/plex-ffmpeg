@@ -367,6 +367,12 @@ enum AVPixelFormat {
     AV_PIX_FMT_P416BE,      ///< interleaved chroma YUV 4:4:4, 48bpp, big-endian
     AV_PIX_FMT_P416LE,      ///< interleaved chroma YUV 4:4:4, 48bpp, little-endian
 
+    AV_PIX_FMT_RGBAF16BE,     ///< IEEE-754 half precision packed RGBA, 64bpp, big-endian
+    AV_PIX_FMT_RGBAF16LE,     ///< IEEE-754 half precision packed RGBA, 64bpp, little-endian
+
+    AV_PIX_FMT_RGBAF32BE,     ///< IEEE-754 single precision packed RGBA, 128bpp, big-endian
+    AV_PIX_FMT_RGBAF32LE,     ///< IEEE-754 single precision packed RGBA, 128bpp, little-endian
+
     AV_PIX_FMT_NB         ///< number of pixel formats, DO NOT USE THIS if you want to link with shared libav* because the number of formats might differ between versions
 };
 
@@ -463,6 +469,9 @@ enum AVPixelFormat {
 #define AV_PIX_FMT_P410       AV_PIX_FMT_NE(P410BE, P410LE)
 #define AV_PIX_FMT_P216       AV_PIX_FMT_NE(P216BE, P216LE)
 #define AV_PIX_FMT_P416       AV_PIX_FMT_NE(P416BE, P416LE)
+
+#define AV_PIX_FMT_RGBAF16    AV_PIX_FMT_NE(RGBAF16BE, RGBAF16LE)
+#define AV_PIX_FMT_RGBAF32    AV_PIX_FMT_NE(RGBAF32BE, RGBAF32LE)
 
 /**
   * Chromaticity coordinates of the source primaries.

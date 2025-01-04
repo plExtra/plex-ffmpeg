@@ -76,6 +76,8 @@ static const struct {
 #if HAVE_KCVPIXELFORMATTYPE_444YPCBCR16BIPLANARVIDEORANGE
     { kCVPixelFormatType_444YpCbCr16BiPlanarVideoRange, false, AV_PIX_FMT_P416 },
 #endif
+    { kCVPixelFormatType_64RGBAHalf,                    false, AV_PIX_FMT_RGBAF16 },
+    { kCVPixelFormatType_128RGBAFloat,                  false, AV_PIX_FMT_RGBAF32 },
 };
 
 static const enum AVPixelFormat supported_formats[] = {
@@ -107,6 +109,8 @@ static const enum AVPixelFormat supported_formats[] = {
     AV_PIX_FMT_P416,
 #endif
     AV_PIX_FMT_BGRA,
+    AV_PIX_FMT_RGBAF16,
+    AV_PIX_FMT_RGBAF32,
 };
 
 static int vt_frames_get_constraints(AVHWDeviceContext *ctx,
@@ -210,36 +214,9 @@ static int vt_pool_alloc(AVHWFramesContext *ctx)
     return AVERROR_EXTERNAL;
 }
 
-static void videotoolbox_buffer_release(void *opaque, uint8_t *data)
+static AVBufferRef *vt_dummy_pool_alloc(void *opaque, size_t size)
 {
-    CVPixelBufferRelease((CVPixelBufferRef)data);
-}
-
-static AVBufferRef *vt_pool_alloc_buffer(void *opaque, size_t size)
-{
-    CVPixelBufferRef pixbuf;
-    AVBufferRef *buf;
-    CVReturn err;
-    AVHWFramesContext *ctx = opaque;
-    VTFramesContext *fctx = ctx->internal->priv;
-
-    err = CVPixelBufferPoolCreatePixelBuffer(
-        NULL,
-        fctx->pool,
-        &pixbuf
-    );
-    if (err != kCVReturnSuccess) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to create pixel buffer from pool: %d\n", err);
-        return NULL;
-    }
-
-    buf = av_buffer_create((uint8_t *)pixbuf, size,
-                           videotoolbox_buffer_release, NULL, 0);
-    if (!buf) {
-        CVPixelBufferRelease(pixbuf);
-        return NULL;
-    }
-    return buf;
+    return NULL;
 }
 
 static void vt_frames_uninit(AVHWFramesContext *ctx)
@@ -265,9 +242,9 @@ static int vt_frames_init(AVHWFramesContext *ctx)
         return AVERROR(ENOSYS);
     }
 
+    // create a dummy pool so av_hwframe_get_buffer doesn't EINVAL
     if (!ctx->pool) {
-        ctx->internal->pool_internal = av_buffer_pool_init2(
-                sizeof(CVPixelBufferRef), ctx, vt_pool_alloc_buffer, NULL);
+        ctx->internal->pool_internal = av_buffer_pool_init2(0, ctx, vt_dummy_pool_alloc, NULL);
         if (!ctx->internal->pool_internal)
             return AVERROR(ENOMEM);
     }
@@ -279,11 +256,41 @@ static int vt_frames_init(AVHWFramesContext *ctx)
     return 0;
 }
 
+static void videotoolbox_buffer_release(void *opaque, uint8_t *data)
+{
+    CVPixelBufferRelease((CVPixelBufferRef)data);
+}
+
 static int vt_get_buffer(AVHWFramesContext *ctx, AVFrame *frame)
 {
-    frame->buf[0] = av_buffer_pool_get(ctx->pool);
-    if (!frame->buf[0])
-        return AVERROR(ENOMEM);
+    VTFramesContext *fctx = ctx->internal->priv;
+
+    if (ctx->pool && ctx->pool->size != 0) {
+        frame->buf[0] = av_buffer_pool_get(ctx->pool);
+        if (!frame->buf[0])
+            return AVERROR(ENOMEM);
+    } else {
+        CVPixelBufferRef pixbuf;
+        AVBufferRef *buf = NULL;
+        CVReturn err;
+
+        err = CVPixelBufferPoolCreatePixelBuffer(
+            NULL,
+            fctx->pool,
+            &pixbuf
+        );
+        if (err != kCVReturnSuccess) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to create pixel buffer from pool: %d\n", err);
+            return AVERROR_EXTERNAL;
+        }
+
+        buf = av_buffer_create((uint8_t *)pixbuf, 1, videotoolbox_buffer_release, NULL, 0);
+        if (!buf) {
+            CVPixelBufferRelease(pixbuf);
+            return AVERROR(ENOMEM);
+        }
+        frame->buf[0] = buf;
+    }
 
     frame->data[3] = frame->buf[0]->data;
     frame->format  = AV_PIX_FMT_VIDEOTOOLBOX;

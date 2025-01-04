@@ -72,7 +72,6 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
-#include "demux.h"
 #include "internal.h"
 
 #define HUFFMAN_TABLE_SIZE (64 * 1024)

@@ -29,16 +29,11 @@
 #define AVCODEC_MPEGVIDEODEC_H
 
 #include "libavutil/frame.h"
-#include "libavutil/log.h"
-
 #include "avcodec.h"
 #include "get_bits.h"
 #include "mpegpicture.h"
 #include "mpegvideo.h"
 #include "mpegvideodata.h"
-
-#define FF_MPV_QSCALE_TYPE_MPEG1 0
-#define FF_MPV_QSCALE_TYPE_MPEG2 1
 
 /**
  * Initialize the given MpegEncContext for decoding.
@@ -67,16 +62,6 @@ static inline int mpeg_get_qscale(MpegEncContext *s)
         return ff_mpeg2_non_linear_qscale[qscale];
     else
         return qscale << 1;
-}
-
-static inline int check_marker(void *logctx, GetBitContext *s, const char *msg)
-{
-    int bit = get_bits1(s);
-    if (!bit)
-        av_log(logctx, AV_LOG_INFO, "Marker bit missing at %d of %d %s\n",
-               get_bits_count(s) - 1, s->size_in_bits, msg);
-
-    return bit;
 }
 
 #endif /* AVCODEC_MPEGVIDEODEC_H */

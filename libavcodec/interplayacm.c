@@ -552,11 +552,12 @@ static int decode_block(InterplayACMContext *s)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame_ptr, AVPacket *pkt)
 {
     InterplayACMContext *s = avctx->priv_data;
     GetBitContext *gb = &s->gb;
+    AVFrame *frame = data;
     const uint8_t *buf;
     int16_t *samples;
     int ret, n, buf_size, input_buf_size;
@@ -639,7 +640,7 @@ const FFCodec ff_interplay_acm_decoder = {
     .p.id           = AV_CODEC_ID_INTERPLAY_ACM,
     .init           = decode_init,
     .close          = decode_close,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
     .priv_data_size = sizeof(InterplayACMContext),

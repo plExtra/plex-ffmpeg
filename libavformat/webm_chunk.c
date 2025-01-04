@@ -28,7 +28,6 @@
 #include "avio.h"
 #include "avio_internal.h"
 #include "internal.h"
-#include "mux.h"
 
 #include "libavutil/log.h"
 #include "libavutil/opt.h"

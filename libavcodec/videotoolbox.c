@@ -699,7 +699,7 @@ static void videotoolbox_decoder_callback(void *opaque,
     }
 
     if (!image_buffer) {
-        av_log(avctx, status ? AV_LOG_WARNING : AV_LOG_DEBUG, "vt decoder cb: output image buffer is null: %i\n", status);
+        av_log(avctx, AV_LOG_DEBUG, "vt decoder cb: output image buffer is null\n");
         return;
     }
 
@@ -1133,10 +1133,20 @@ static int videotoolbox_prores_end_frame(AVCodecContext *avctx)
 
 static enum AVPixelFormat videotoolbox_best_pixel_format(AVCodecContext *avctx) {
     const AVPixFmtDescriptor *descriptor = av_pix_fmt_desc_get(avctx->sw_pix_fmt);
-    if (!descriptor)
+    if (!descriptor || getenv("LAVC_VT_ALWAYS_NV12"))
         return AV_PIX_FMT_NV12; // same as av_videotoolbox_alloc_context()
 
     int depth = descriptor->comp[0].depth;
+
+#if TARGET_OS_IPHONE
+    // iOS has limited support for non-8-bit integer formats in OpenGL, so we use F16 there.
+    if (!getenv("LAVC_VT_NO_RGBAF16") &&
+        ((descriptor->flags & AV_PIX_FMT_FLAG_ALPHA) ||
+         depth > 8 ||
+         descriptor->log2_chroma_w == 0 ||
+         descriptor->log2_chroma_h == 0))
+        return AV_PIX_FMT_RGBAF16;
+#endif
 
     if (descriptor->flags & AV_PIX_FMT_FLAG_ALPHA)
         return AV_PIX_FMT_AYUV64;

@@ -23,7 +23,6 @@
 #include <pulse/error.h>
 #include "libavformat/avformat.h"
 #include "libavformat/internal.h"
-#include "libavformat/mux.h"
 #include "libavformat/version.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/internal.h"

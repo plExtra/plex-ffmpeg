@@ -273,11 +273,10 @@ static int cine_read_header(AVFormatContext *avctx)
     /* parse image offsets */
     avio_seek(pb, offImageOffsets, SEEK_SET);
     for (i = 0; i < st->duration; i++) {
-        int64_t pos = avio_rl64(pb);
-        if (avio_feof(pb) || pos < 0)
+        if (avio_feof(pb))
             return AVERROR_INVALIDDATA;
 
-        av_add_index_entry(st, pos, i, 0, 0, AVINDEX_KEYFRAME);
+        av_add_index_entry(st, avio_rl64(pb), i, 0, 0, AVINDEX_KEYFRAME);
     }
 
     return 0;
@@ -303,10 +302,10 @@ static int cine_read_packet(AVFormatContext *avctx, AVPacket *pkt)
         return AVERROR_INVALIDDATA;
     avio_skip(pb, n - 8);
     size = avio_rl32(pb);
-    if (avio_feof(pb) || size < 0)
+    if (avio_feof(pb))
         return AVERROR_INVALIDDATA;
 
-    if (cine->maxsize && (uint64_t)sti->index_entries[cine->pts].pos + size + n > cine->maxsize)
+    if (cine->maxsize && sti->index_entries[cine->pts].pos + size + n > cine->maxsize)
         size = cine->maxsize - sti->index_entries[cine->pts].pos - n;
 
     ret = av_get_packet(pb, pkt, size);
@@ -314,7 +313,7 @@ static int cine_read_packet(AVFormatContext *avctx, AVPacket *pkt)
         return ret;
 
     if (ret != size)
-        cine->maxsize = (uint64_t)sti->index_entries[cine->pts].pos + n + ret;
+        cine->maxsize = sti->index_entries[cine->pts].pos + n + ret;
 
     pkt->pts = cine->pts++;
     pkt->stream_index = 0;

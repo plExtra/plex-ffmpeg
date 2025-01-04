@@ -26,6 +26,7 @@
 
 #include "libavutil/intreadwrite.h"
 #include "libavcodec/bytestream.h"
+#include "libavcodec/bmp.h"
 #include "libavcodec/png.h"
 #include "avformat.h"
 #include "internal.h"

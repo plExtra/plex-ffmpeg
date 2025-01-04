@@ -123,9 +123,6 @@ static const struct {
     #if CONFIG_HUFFYUV_DECODER
         { "huffyuvdsp", checkasm_check_huffyuvdsp },
     #endif
-    #if CONFIG_IDCTDSP
-        { "idctdsp", checkasm_check_idctdsp },
-    #endif
     #if CONFIG_JPEG2000_DECODER
         { "jpeg2000dsp", checkasm_check_jpeg2000dsp },
     #endif
@@ -134,9 +131,6 @@ static const struct {
     #endif
     #if CONFIG_LLVIDENCDSP
         { "llviddspenc", checkasm_check_llviddspenc },
-    #endif
-    #if CONFIG_ME_CMP
-        { "motion", checkasm_check_motion },
     #endif
     #if CONFIG_OPUS_DECODER
         { "opusdsp", checkasm_check_opusdsp },
@@ -152,9 +146,6 @@ static const struct {
     #endif
     #if CONFIG_V210_ENCODER
         { "v210enc", checkasm_check_v210enc },
-    #endif
-    #if CONFIG_VC1DSP
-        { "vc1dsp", checkasm_check_vc1dsp },
     #endif
     #if CONFIG_VP8DSP
         { "vp8dsp", checkasm_check_vp8dsp },
@@ -173,6 +164,9 @@ static const struct {
     #if CONFIG_BLEND_FILTER
         { "vf_blend", checkasm_check_blend },
     #endif
+    #if CONFIG_BWDIF_FILTER
+        { "vf_bwdif", checkasm_check_vf_bwdif },
+    #endif
     #if CONFIG_COLORSPACE_FILTER
         { "vf_colorspace", checkasm_check_colorspace },
     #endif
@@ -190,6 +184,9 @@ static const struct {
     #endif
     #if CONFIG_THRESHOLD_FILTER
         { "vf_threshold", checkasm_check_vf_threshold },
+    #endif
+    #if CONFIG_YADIF_FILTER
+        { "vf_yadif", checkasm_check_vf_yadif },
     #endif
 #endif
 #if CONFIG_SWSCALE

@@ -23,7 +23,7 @@
 #include "libavutil/mem.h"
 #include "libavcodec/av1.h"
 #include "libavcodec/av1_parse.h"
-#include "libavcodec/avcodec.h"
+#include "libavcodec/profiles.h"
 #include "libavcodec/put_bits.h"
 #include "av1.h"
 #include "avio.h"
@@ -395,8 +395,7 @@ int ff_av1_parse_seq_header(AV1SequenceParameters *seq, const uint8_t *buf, int 
     return is_av1c ? 0 : AVERROR_INVALIDDATA;
 }
 
-int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
-                       int write_seq_header)
+int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size)
 {
     AVIOContext *meta_pb;
     AV1SequenceParameters seq_params;
@@ -486,9 +485,7 @@ int ff_isom_write_av1c(AVIOContext *pb, const uint8_t *buf, int size,
     flush_put_bits(&pbc);
 
     avio_write(pb, header, sizeof(header));
-    if (write_seq_header) {
-        avio_write(pb, seq, seq_size);
-    }
+    avio_write(pb, seq, seq_size);
 
     meta_size = avio_get_dyn_buf(meta_pb, &meta);
     if (meta_size)

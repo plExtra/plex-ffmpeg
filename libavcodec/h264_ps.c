@@ -351,10 +351,6 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
     }
     memcpy(sps->data, gb->buffer, sps->data_size);
 
-    // Re-add the removed stop bit (may be used by hwaccels).
-    if (!(gb->size_in_bits & 7) && sps->data_size < sizeof(sps->data))
-        sps->data[sps->data_size++] = 0x80;
-
     profile_idc           = get_bits(gb, 8);
     constraint_set_flags |= get_bits1(gb) << 0;   // constraint_set0_flag
     constraint_set_flags |= get_bits1(gb) << 1;   // constraint_set1_flag
@@ -425,6 +421,7 @@ int ff_h264_decode_seq_parameter_set(GetBitContext *gb, AVCodecContext *avctx,
         if (ret < 0)
             goto fail;
         sps->scaling_matrix_present |= ret;
+        avctx->scaling_matrix_present |= sps->scaling_matrix_present; //PLEX
     } else {
         sps->chroma_format_idc = 1;
         sps->bit_depth_luma    = 8;
@@ -778,10 +775,6 @@ int ff_h264_decode_picture_parameter_set(GetBitContext *gb, AVCodecContext *avct
         pps->data_size = sizeof(pps->data);
     }
     memcpy(pps->data, gb->buffer, pps->data_size);
-
-    // Re-add the removed stop bit (may be used by hwaccels).
-    if (!(bit_length & 7) && pps->data_size < sizeof(pps->data))
-        pps->data[pps->data_size++] = 0x80;
 
     pps->sps_id = get_ue_golomb_31(gb);
     if ((unsigned)pps->sps_id >= MAX_SPS_COUNT ||

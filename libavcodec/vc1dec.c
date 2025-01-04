@@ -491,7 +491,7 @@ static av_cold int vc1_decode_init(AVCodecContext *avctx)
             size = next - start - 4;
             if (size <= 0)
                 continue;
-            buf2_size = v->vc1dsp.vc1_unescape_buffer(start + 4, size, buf2);
+            buf2_size = vc1_unescape_buffer(start + 4, size, buf2);
             init_get_bits(&gb, buf2, buf2_size * 8);
             switch (AV_RB32(start)) {
             case VC1_CODE_SEQHDR:
@@ -623,13 +623,14 @@ av_cold int ff_vc1_decode_end(AVCodecContext *avctx)
 /** Decode a VC1/WMV3 frame
  * @todo TODO: Handle VC-1 IDUs (Transport level?)
  */
-static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
+static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                             int *got_frame, AVPacket *avpkt)
 {
     const uint8_t *buf = avpkt->data;
     int buf_size = avpkt->size, n_slices = 0, i, ret;
     VC1Context *v = avctx->priv_data;
     MpegEncContext *s = &v->s;
+    AVFrame *pict = data;
     uint8_t *buf2 = NULL;
     const uint8_t *buf_start = buf, *buf_start_second_field = NULL;
     int mb_height, n_slices1=-1;
@@ -680,7 +681,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                 case VC1_CODE_FRAME:
                     if (avctx->hwaccel)
                         buf_start = start;
-                    buf_size2 = v->vc1dsp.vc1_unescape_buffer(start + 4, size, buf2);
+                    buf_size2 = vc1_unescape_buffer(start + 4, size, buf2);
                     break;
                 case VC1_CODE_FIELD: {
                     int buf_size3;
@@ -697,8 +698,8 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                         ret = AVERROR(ENOMEM);
                         goto err;
                     }
-                    buf_size3 = v->vc1dsp.vc1_unescape_buffer(start + 4, size,
-                                                              slices[n_slices].buf);
+                    buf_size3 = vc1_unescape_buffer(start + 4, size,
+                                                    slices[n_slices].buf);
                     init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
                                   buf_size3 << 3);
                     slices[n_slices].mby_start = avctx->coded_height + 31 >> 5;
@@ -709,7 +710,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                     break;
                 }
                 case VC1_CODE_ENTRYPOINT: /* it should be before frame data */
-                    buf_size2 = v->vc1dsp.vc1_unescape_buffer(start + 4, size, buf2);
+                    buf_size2 = vc1_unescape_buffer(start + 4, size, buf2);
                     init_get_bits(&s->gb, buf2, buf_size2 * 8);
                     ff_vc1_decode_entry_point(avctx, v, &s->gb);
                     break;
@@ -726,8 +727,8 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                         ret = AVERROR(ENOMEM);
                         goto err;
                     }
-                    buf_size3 = v->vc1dsp.vc1_unescape_buffer(start + 4, size,
-                                                              slices[n_slices].buf);
+                    buf_size3 = vc1_unescape_buffer(start + 4, size,
+                                                    slices[n_slices].buf);
                     init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
                                   buf_size3 << 3);
                     slices[n_slices].mby_start = get_bits(&slices[n_slices].gb, 9);
@@ -761,7 +762,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                     ret = AVERROR(ENOMEM);
                     goto err;
                 }
-                buf_size3 = v->vc1dsp.vc1_unescape_buffer(divider + 4, buf + buf_size - divider - 4, slices[n_slices].buf);
+                buf_size3 = vc1_unescape_buffer(divider + 4, buf + buf_size - divider - 4, slices[n_slices].buf);
                 init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
                               buf_size3 << 3);
                 slices[n_slices].mby_start = s->mb_height + 1 >> 1;
@@ -770,9 +771,9 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                 n_slices1 = n_slices - 1;
                 n_slices++;
             }
-            buf_size2 = v->vc1dsp.vc1_unescape_buffer(buf, divider - buf, buf2);
+            buf_size2 = vc1_unescape_buffer(buf, divider - buf, buf2);
         } else {
-            buf_size2 = v->vc1dsp.vc1_unescape_buffer(buf, buf_size, buf2);
+            buf_size2 = vc1_unescape_buffer(buf, buf_size, buf2);
         }
         init_get_bits(&s->gb, buf2, buf_size2*8);
     } else{
@@ -1209,7 +1210,7 @@ const FFCodec ff_vc1_decoder = {
     .priv_data_size = sizeof(VC1Context),
     .init           = vc1_decode_init,
     .close          = ff_vc1_decode_end,
-    FF_CODEC_DECODE_CB(vc1_decode_frame),
+    .decode         = vc1_decode_frame,
     .flush          = ff_mpeg_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
@@ -1247,7 +1248,7 @@ const FFCodec ff_wmv3_decoder = {
     .priv_data_size = sizeof(VC1Context),
     .init           = vc1_decode_init,
     .close          = ff_vc1_decode_end,
-    FF_CODEC_DECODE_CB(vc1_decode_frame),
+    .decode         = vc1_decode_frame,
     .flush          = ff_mpeg_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
@@ -1286,7 +1287,7 @@ const FFCodec ff_wmv3image_decoder = {
     .priv_data_size = sizeof(VC1Context),
     .init           = vc1_decode_init,
     .close          = ff_vc1_decode_end,
-    FF_CODEC_DECODE_CB(vc1_decode_frame),
+    .decode         = vc1_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
     .flush          = vc1_sprite_flush,
@@ -1306,7 +1307,7 @@ const FFCodec ff_vc1image_decoder = {
     .priv_data_size = sizeof(VC1Context),
     .init           = vc1_decode_init,
     .close          = ff_vc1_decode_end,
-    FF_CODEC_DECODE_CB(vc1_decode_frame),
+    .decode         = vc1_decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
     .flush          = vc1_sprite_flush,

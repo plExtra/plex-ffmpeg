@@ -80,6 +80,16 @@ static const char *const delinearize_funcs[AVCOL_TRC_NB] = {
     [AVCOL_TRC_BT2020_10] = "inverse_eotf_bt1886",
 };
 
+static const struct PrimaryCoefficients primaries_table[AVCOL_PRI_NB] = {
+    [AVCOL_PRI_BT709]  = { 0.640, 0.330, 0.300, 0.600, 0.150, 0.060 },
+    [AVCOL_PRI_BT2020] = { 0.708, 0.292, 0.170, 0.797, 0.131, 0.046 },
+};
+
+static const struct WhitepointCoefficients whitepoint_table[AVCOL_PRI_NB] = {
+    [AVCOL_PRI_BT709]  = { 0.3127, 0.3290 },
+    [AVCOL_PRI_BT2020] = { 0.3127, 0.3290 },
+};
+
 static const char *const tonemap_func[TONEMAP_MAX] = {
     [TONEMAP_NONE]     = "direct",
     [TONEMAP_LINEAR]   = "linear",
@@ -90,22 +100,14 @@ static const char *const tonemap_func[TONEMAP_MAX] = {
     [TONEMAP_MOBIUS]   = "mobius",
 };
 
-static int get_rgb2rgb_matrix(enum AVColorPrimaries in, enum AVColorPrimaries out,
-                              double rgb2rgb[3][3]) {
+static void get_rgb2rgb_matrix(enum AVColorPrimaries in, enum AVColorPrimaries out,
+                               double rgb2rgb[3][3]) {
     double rgb2xyz[3][3], xyz2rgb[3][3];
 
-    const AVColorPrimariesDesc *in_primaries = av_csp_primaries_desc_from_id(in);
-    const AVColorPrimariesDesc *out_primaries = av_csp_primaries_desc_from_id(out);
-
-    if (!in_primaries || !out_primaries)
-        return AVERROR(EINVAL);
-
-    ff_fill_rgb2xyz_table(&out_primaries->prim, &out_primaries->wp, rgb2xyz);
+    ff_fill_rgb2xyz_table(&primaries_table[out], &whitepoint_table[out], rgb2xyz);
     ff_matrix_invert_3x3(rgb2xyz, xyz2rgb);
-    ff_fill_rgb2xyz_table(&in_primaries->prim, &in_primaries->wp, rgb2xyz);
+    ff_fill_rgb2xyz_table(&primaries_table[in], &whitepoint_table[in], rgb2xyz);
     ff_matrix_mul_3x3(rgb2rgb, rgb2xyz, xyz2rgb);
-
-    return 0;
 }
 
 #define OPENCL_SOURCE_NB 3
@@ -118,7 +120,7 @@ static int tonemap_opencl_init(AVFilterContext *avctx)
     TonemapOpenCLContext *ctx = avctx->priv;
     int rgb2rgb_passthrough = 1;
     double rgb2rgb[3][3], rgb2yuv[3][3], yuv2rgb[3][3];
-    const AVLumaCoefficients *luma_src, *luma_dst;
+    const struct LumaCoefficients *luma_src, *luma_dst;
     cl_int cle;
     int err;
     AVBPrint header;
@@ -182,8 +184,7 @@ static int tonemap_opencl_init(AVFilterContext *avctx)
     av_bprintf(&header, "#define DETECTION_FRAMES %d\n", DETECTION_FRAMES);
 
     if (ctx->primaries_out != ctx->primaries_in) {
-        if ((err = get_rgb2rgb_matrix(ctx->primaries_in, ctx->primaries_out, rgb2rgb)) < 0)
-            goto fail;
+        get_rgb2rgb_matrix(ctx->primaries_in, ctx->primaries_out, rgb2rgb);
         rgb2rgb_passthrough = 0;
     }
     if (ctx->range_in == AVCOL_RANGE_JPEG)
@@ -194,13 +195,15 @@ static int tonemap_opencl_init(AVFilterContext *avctx)
 
     av_bprintf(&header, "#define chroma_loc %d\n", (int)ctx->chroma_loc);
 
+    av_bprintf(&header, "#define powr native_powr\n");
+
     if (rgb2rgb_passthrough)
         av_bprintf(&header, "#define RGB2RGB_PASSTHROUGH\n");
     else
         ff_opencl_print_const_matrix_3x3(&header, "rgb2rgb", rgb2rgb);
 
 
-    luma_src = av_csp_luma_coeffs_from_avcsp(ctx->colorspace_in);
+    luma_src = ff_get_luma_coefficients(ctx->colorspace_in);
     if (!luma_src) {
         err = AVERROR(EINVAL);
         av_log(avctx, AV_LOG_ERROR, "unsupported input colorspace %d (%s)\n",
@@ -208,7 +211,7 @@ static int tonemap_opencl_init(AVFilterContext *avctx)
         goto fail;
     }
 
-    luma_dst = av_csp_luma_coeffs_from_avcsp(ctx->colorspace_out);
+    luma_dst = ff_get_luma_coefficients(ctx->colorspace_out);
     if (!luma_dst) {
         err = AVERROR(EINVAL);
         av_log(avctx, AV_LOG_ERROR, "unsupported output colorspace %d (%s)\n",
@@ -224,9 +227,9 @@ static int tonemap_opencl_init(AVFilterContext *avctx)
     ff_opencl_print_const_matrix_3x3(&header, "rgb_matrix", yuv2rgb);
 
     av_bprintf(&header, "constant float3 luma_src = {%.4ff, %.4ff, %.4ff};\n",
-               av_q2d(luma_src->cr), av_q2d(luma_src->cg), av_q2d(luma_src->cb));
+               luma_src->cr, luma_src->cg, luma_src->cb);
     av_bprintf(&header, "constant float3 luma_dst = {%.4ff, %.4ff, %.4ff};\n",
-               av_q2d(luma_dst->cr), av_q2d(luma_dst->cg), av_q2d(luma_dst->cb));
+               luma_dst->cr, luma_dst->cg, luma_dst->cb);
 
     av_bprintf(&header, "#define linearize %s\n", linearize_funcs[ctx->trc_in]);
     av_bprintf(&header, "#define delinearize %s\n",

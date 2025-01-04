@@ -34,7 +34,6 @@
 #include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
-#include "bsf.h"
 #include "codec_internal.h"
 #include "decode.h"
 #include "hwconfig.h"
@@ -655,23 +654,21 @@ error:
 static av_cold int cuvid_decode_end(AVCodecContext *avctx)
 {
     CuvidContext *ctx = avctx->priv_data;
-    AVHWDeviceContext *device_ctx = ctx->hwdevice ? (AVHWDeviceContext *)ctx->hwdevice->data : NULL;
-    AVCUDADeviceContext *device_hwctx = device_ctx ? device_ctx->hwctx : NULL;
-    CUcontext dummy, cuda_ctx = device_hwctx ? device_hwctx->cuda_ctx : NULL;
+    AVHWDeviceContext *device_ctx = (AVHWDeviceContext *)ctx->hwdevice->data;
+    AVCUDADeviceContext *device_hwctx = device_ctx->hwctx;
+    CUcontext dummy, cuda_ctx = device_hwctx->cuda_ctx;
 
     av_fifo_freep2(&ctx->frame_queue);
 
-    if (cuda_ctx) {
-        ctx->cudl->cuCtxPushCurrent(cuda_ctx);
+    ctx->cudl->cuCtxPushCurrent(cuda_ctx);
 
-        if (ctx->cuparser)
-            ctx->cvdl->cuvidDestroyVideoParser(ctx->cuparser);
+    if (ctx->cuparser)
+        ctx->cvdl->cuvidDestroyVideoParser(ctx->cuparser);
 
-        if (ctx->cudecoder)
-            ctx->cvdl->cuvidDestroyDecoder(ctx->cudecoder);
+    if (ctx->cudecoder)
+        ctx->cvdl->cuvidDestroyDecoder(ctx->cudecoder);
 
-        ctx->cudl->cuCtxPopCurrent(&dummy);
-    }
+    ctx->cudl->cuCtxPopCurrent(&dummy);
 
     ctx->cudl = NULL;
 
@@ -955,16 +952,6 @@ static av_cold int cuvid_decode_init(AVCodecContext *avctx)
         extradata_size = avctx->extradata_size;
     }
 
-    // Check first bit to determine whether it's AV1CodecConfigurationRecord.
-    // Skip first 4 bytes of AV1CodecConfigurationRecord to keep configOBUs
-    // only, otherwise cuvidParseVideoData report unknown error.
-    if (avctx->codec->id == AV_CODEC_ID_AV1 &&
-            extradata_size > 4 &&
-            extradata[0] & 0x80) {
-        extradata += 4;
-        extradata_size -= 4;
-    }
-
     ctx->cuparse_ext = av_mallocz(sizeof(*ctx->cuparse_ext)
             + FFMAX(extradata_size - (int)sizeof(ctx->cuparse_ext->raw_seqhdr_data), 0));
     if (!ctx->cuparse_ext) {
@@ -1125,7 +1112,7 @@ static const AVCodecHWConfigInternal *const cuvid_hw_configs[] = {
         .p.priv_class   = &x##_cuvid_class, \
         .init           = cuvid_decode_init, \
         .close          = cuvid_decode_end, \
-        FF_CODEC_RECEIVE_FRAME_CB(cuvid_output_frame), \
+        .receive_frame  = cuvid_output_frame, \
         .flush          = cuvid_flush, \
         .bsfs           = bsf_name, \
         .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \

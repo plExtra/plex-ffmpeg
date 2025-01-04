@@ -50,10 +50,11 @@ static av_cold int init(AVCodecContext *avctx)
     return 0;
 }
 
-static int decode_frame(AVCodecContext *avctx, AVFrame *p,
+static int decode_frame(AVCodecContext *avctx, void *data,
                         int *got_frame, AVPacket *avpkt)
 {
     AVRnContext *a = avctx->priv_data;
+    AVFrame *p = data;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
     int y, ret, true_height;
@@ -96,7 +97,7 @@ const FFCodec ff_avrn_decoder = {
     .p.id           = AV_CODEC_ID_AVRN,
     .priv_data_size = sizeof(AVRnContext),
     .init           = init,
-    FF_CODEC_DECODE_CB(decode_frame),
+    .decode         = decode_frame,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
