@@ -56,6 +56,19 @@ int ff_unlock_avformat(void)
     return ff_mutex_unlock(&avformat_mutex) ? -1 : 0;
 }
 
+//PLEX
+AVDecryptionCallbacks decryption_callbacks = {NULL};
+void avformat_set_decryption_callbacks(const AVDecryptionCallbacks* cbs)
+{
+    ff_lock_avformat();
+    if (cbs)
+        decryption_callbacks = *cbs;
+    else
+        decryption_callbacks = (AVDecryptionCallbacks){NULL};
+    ff_unlock_avformat();
+}
+//PLEX
+
 /* an arbitrarily chosen "sane" max packet size -- 50M */
 #define SANE_CHUNK_SIZE (50000000)
 

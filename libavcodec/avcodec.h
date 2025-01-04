@@ -1880,6 +1880,14 @@ typedef struct AVCodecContext {
      */
     uint16_t *chroma_intra_matrix;
 
+//PLEX
+    /**
+     * Whether or not an H.264 scaling matrix is present
+     * - decoding: Set by h264 decoder
+     */
+    int scaling_matrix_present;
+//PLEX
+
     /**
      * dump format separator.
      * can be ", " or "\n      " or anything else
@@ -2029,6 +2037,10 @@ typedef struct AVCodecContext {
      * used as reference pictures).
      */
     int extra_hw_frames;
+
+//PLEX
+    int separate_fields;
+//PLEX
 
     /**
      * The percentage of damaged samples to discard a frame.

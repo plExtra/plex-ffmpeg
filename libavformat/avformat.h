@@ -2855,4 +2855,17 @@ AVRational av_stream_get_codec_timebase(const AVStream *st);
  * @}
  */
 
+//PLEX
+int avformat_http_do_new_request(AVIOContext *pb, const char *uri, const char *verb);
+//PLEX
+
+//PLEX
+typedef struct AVDecryptionCallbacks {
+    int (*new_stream)(AVFormatContext *ctx, AVStream *s);
+    int (*close_stream)(AVFormatContext *ctx, AVStream *s);
+    int (*handle_packet)(AVFormatContext *ctx, AVPacket *pkt);
+} AVDecryptionCallbacks;
+void avformat_set_decryption_callbacks(const AVDecryptionCallbacks* cbs);
+//PLEX
+
 #endif /* AVFORMAT_AVFORMAT_H */

@@ -216,6 +216,17 @@ FF_ENABLE_DEPRECATION_WARNINGS
         if (ret < 0)
             return ret;
 
+//PLEX
+        if (!sti->decrypt_inited) {
+            ff_lock_avformat();
+            int (*new_stream)(AVFormatContext *ctx, AVStream *s) = decryption_callbacks.new_stream;
+            ff_unlock_avformat();
+            if (new_stream)
+                new_stream(s, st);
+            sti->decrypt_inited = 1;
+        }
+//PLEX
+
         sti->codec_desc = avcodec_descriptor_get(sti->avctx->codec_id);
 
         sti->need_context_update = 0;
@@ -1224,6 +1235,11 @@ static int parse_packet(AVFormatContext *s, AVPacket *pkt,
         if (sti->parser->key_frame == -1 && sti->parser->pict_type ==AV_PICTURE_TYPE_NONE && (pkt->flags&AV_PKT_FLAG_KEY))
             out_pkt->flags |= AV_PKT_FLAG_KEY;
 
+//PLEX
+        if (pkt->flags & AV_PKT_FLAG_DISCARD)
+            out_pkt->flags |= AV_PKT_FLAG_DISCARD;
+//PLEX
+
         compute_pkt_fields(s, st, sti->parser, out_pkt, next_dts, next_pts);
 
         ret = avpriv_packet_list_put(&si->parse_queue,
@@ -1982,8 +1998,8 @@ static int has_codec_parameters(const AVStream *st, const char **errmsg_ptr)
             FAIL("unspecified sample rate");
         if (!avctx->ch_layout.nb_channels)
             FAIL("unspecified number of channels");
-        if (sti->info->found_decoder >= 0 && !sti->nb_decoded_frames && avctx->codec_id == AV_CODEC_ID_DTS)
-            FAIL("no decodable DTS frames");
+/*        if (sti->info->found_decoder >= 0 && !sti->nb_decoded_frames && avctx->codec_id == AV_CODEC_ID_DTS)
+            FAIL("no decodable DTS frames");*/ //PLEX
         break;
     case AVMEDIA_TYPE_VIDEO:
         if (!avctx->width)
@@ -2271,6 +2287,8 @@ void ff_rfps_calculate(AVFormatContext *ic)
         AVStream *const st  = ic->streams[i];
         FFStream *const sti = ffstream(st);
 
+        sti->avg_frame_rate_pre = st->avg_frame_rate; //PLEX
+
         if (st->codecpar->codec_type != AVMEDIA_TYPE_VIDEO)
             continue;
         // the check for tb_unreliable() is not completely correct, since this is not about handling
@@ -2446,9 +2464,21 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
     int64_t max_analyze_duration = ic->max_analyze_duration;
     int64_t max_stream_analyze_duration;
     int64_t max_subtitle_analyze_duration;
+    int64_t max_empty_analyze_duration; //PLEX
+    int skip_empty_streams = 0; //PLEX
     int64_t probesize = ic->probesize;
     int eof_reached = 0;
     int *missing_streams = av_opt_ptr(ic->iformat->priv_class, ic->priv_data, "missing_streams");
+
+    //PLEX
+    int has_non_empty_video = 0;
+    int has_non_empty_audio = 0;
+    int has_non_empty_subtitles = 0;
+    int can_bail_noheader = 0;
+
+    si->packet_buffer_last = si->packet_buffer;
+    si->packet_buffer = (PacketList){ NULL };
+    //PLEX
 
     flush_codecs = probesize > 0;
 
@@ -2461,9 +2491,12 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
         max_analyze_duration        = 5*AV_TIME_BASE;
         max_subtitle_analyze_duration = 30*AV_TIME_BASE;
         if (!strcmp(ic->iformat->name, "flv"))
+            max_empty_analyze_duration = //PLEX
             max_stream_analyze_duration = 90*AV_TIME_BASE;
         if (!strcmp(ic->iformat->name, "mpeg") || !strcmp(ic->iformat->name, "mpegts"))
             max_stream_analyze_duration = 7*AV_TIME_BASE;
+            max_empty_analyze_duration = 2*AV_TIME_BASE; //PLEX
+            can_bail_noheader = 1; //PLEX
     }
 
     if (ic->pb) {
@@ -2549,6 +2582,33 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
             int fps_analyze_framecount = 20;
             int count;
 
+//PLEX
+            if (sti->codec_info_nb_frames == 0 &&
+                st->codecpar->codec_type != AVMEDIA_TYPE_SUBTITLE &&
+                (st->codecpar->codec_type != AVMEDIA_TYPE_VIDEO || has_non_empty_video) &&
+                skip_empty_streams)
+                continue;
+
+            if (sti->codec_info_nb_frames &&
+                st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
+                !(st->disposition & AV_DISPOSITION_ATTACHED_PIC))
+                has_non_empty_video = 1;
+
+            if (sti->codec_info_nb_frames &&
+                st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO)
+                has_non_empty_audio = 1;
+
+            if (sti->codec_info_nb_frames &&
+                st->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE)
+                has_non_empty_subtitles = 1;
+
+            if (sti->codec_info_nb_frames &&
+                st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO &&
+                !(st->disposition & AV_DISPOSITION_ATTACHED_PIC) &&
+                (sti->avctx->properties & FF_CODEC_PROPERTY_CLOSED_CAPTIONS))
+                has_non_empty_subtitles = 1;
+//PLEX
+
             if (!has_codec_parameters(st, NULL))
                 break;
             /* If the timebase is coarse (like the usual millisecond precision
@@ -2592,7 +2652,8 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
                 analyzed_all_streams = 1;
                 /* NOTE: If the format has no header, then we need to read some
                  * packets to get most of the streams, so we cannot stop here. */
-                if (!(ic->ctx_flags & AVFMTCTX_NOHEADER)) {
+                if (!(ic->ctx_flags & AVFMTCTX_NOHEADER) ||
+                    (can_bail_noheader && has_non_empty_video && has_non_empty_audio && has_non_empty_subtitles)) { //PLEX
                     /* If we found the info for all the codecs, we can stop. */
                     ret = count;
                     av_log(ic, AV_LOG_DEBUG, "All info found\n");
@@ -2618,6 +2679,12 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
             }
             break;
         }
+
+        //PLEX
+        if (si->packet_buffer_last.head)
+            ret = avpriv_packet_list_get(&si->packet_buffer_last, pkt1);
+        else
+        //PLEX
 
         /* NOTE: A new stream can be added there if no header in file
          * (AVFMTCTX_NOHEADER). */
@@ -3030,6 +3097,16 @@ find_stream_info_err:
         av_log(ic, AV_LOG_DEBUG, "After avformat_find_stream_info() pos: %"PRId64" bytes read:%"PRId64" seeks:%d frames:%d\n",
                avio_tell(ic->pb), ctx->bytes_read, ctx->seek_count, count);
     }
+    //PLEX
+    if (si->packet_buffer_last.head) {
+        if (si->packet_buffer.head)
+            si->packet_buffer.tail->next = si->packet_buffer_last.head;
+        else
+            si->packet_buffer.head = si->packet_buffer_last.head;
+        si->packet_buffer.tail = si->packet_buffer_last.tail;
+        si->packet_buffer_last = (PacketList){ NULL };
+    }
+    //PLEX
     return ret;
 
 unref_then_goto_end:

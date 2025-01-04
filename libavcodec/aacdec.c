@@ -550,8 +550,15 @@ static av_cold int latm_decode_init(AVCodecContext *avctx)
     return ret;
 }
 
+//PLEX
+#ifdef BUILDING_AAC_LC_DECODER_EXTERNAL
+const FFCodec ff_aac_lc_decoder = {
+    .p.name            = "aac_lc",
+#else
 const FFCodec ff_aac_decoder = {
-    .p.name          = "aac",
+    .p.name            = "aac",
+#endif
+//PLEX
     CODEC_LONG_NAME("AAC (Advanced Audio Coding)"),
     .p.type          = AVMEDIA_TYPE_AUDIO,
     .p.id            = AV_CODEC_ID_AAC,

@@ -101,6 +101,10 @@
 #include "ffmpeg.h"
 #include "sync_queue.h"
 
+//PLEX
+#include "plex.h"
+//PLEX
+
 const char program_name[] = "ffmpeg";
 const int program_birth_year = 2000;
 
@@ -1080,6 +1084,11 @@ static int process_input(int file_index)
                    "Error retrieving a packet from demuxer: %s\n", av_err2str(ret));
             if (exit_on_error)
                 return ret;
+
+            //PLEX
+            if (exit_on_io_error)
+                exit_program(1);
+            //PLEX
         }
 
         for (i = 0; i < ifile->nb_streams; i++) {
@@ -1114,6 +1123,12 @@ static int process_input(int file_index)
     sub2video_heartbeat(ifile, pkt->pts, pkt->time_base);
 
     ret = process_input_packet(ist, pkt, 0);
+
+//PLEX
+    // Delay if needed.
+    if (plexContext.throttle_delay > 0)
+      usleep(1000*plexContext.throttle_delay);
+//PLEX
 
     av_packet_free(&pkt);
 
@@ -1169,6 +1184,24 @@ static int transcode(int *err_rate_exceeded)
     int ret = 0, i;
     InputStream *ist;
     int64_t timer_start;
+
+//PLEX
+    for (i = 0; i < nb_output_files; i++) {
+        AVFormatContext* ctx_input = (input_files && input_files[0]) ? input_files[0]->ctx : NULL;
+        AVFormatContext* ctx_output = output_files[i]->ctx;
+        char str[128];
+
+        if (ctx_input && ctx_input->duration != AV_NOPTS_VALUE &&
+            (!strcmp(ctx_output->oformat->name, "matroska") ||
+             !strcmp(ctx_output->oformat->name, "segment"))) {
+            int64_t start_time = input_files[0]->start_time != AV_NOPTS_VALUE ?
+                                 input_files[0]->start_time : 0;
+            // Duration of the part we're transcoding.
+            sprintf(str, "%g", (ctx_input->duration - (copy_ts ? 0 : start_time)) / (double)AV_TIME_BASE);
+            av_dict_set(&ctx_output->metadata, "duration", str, 0);
+        }
+    }
+//PLEX
 
     print_stream_maps();
 
@@ -1233,6 +1266,8 @@ static int transcode(int *err_rate_exceeded)
     ret = err_merge(ret, enc_flush());
 
     term_exit();
+
+    plex_feedback((input_files && input_files[0]) ? input_files[0]->ctx : NULL); //PLEX
 
     /* write the trailer if needed */
     for (i = 0; i < nb_output_files; i++) {
@@ -1301,6 +1336,9 @@ int main(int argc, char **argv)
 
     av_log_set_flags(AV_LOG_SKIP_REPEATED);
     parse_loglevel(argc, argv, options);
+
+    // PLEX: Setup log callback
+    plex_init(argc, argv, options);
 
 #if CONFIG_AVDEVICE
     avdevice_register_all();

@@ -103,6 +103,10 @@ typedef struct FFFormatContext {
      */
     PacketList packet_buffer;
 
+    //PLEX
+    PacketList packet_buffer_last;
+    //PLEX
+
     /* av_seek_frame() support */
     int64_t data_offset; /**< offset of the first packet */
 
@@ -241,6 +245,12 @@ typedef struct FFStream {
      * Whether the internal avctx needs to be updated from codecpar (after a late change to codecpar)
      */
     int need_context_update;
+
+//PLEX
+    int decrypt_inited;
+
+    AVRational avg_frame_rate_pre;
+//PLEX
 
     int is_intra_only;
 
@@ -704,6 +714,9 @@ int ff_bprint_to_codecpar_extradata(AVCodecParameters *par, struct AVBPrint *buf
 
 int ff_lock_avformat(void);
 int ff_unlock_avformat(void);
+
+//PLEX
+extern AVDecryptionCallbacks decryption_callbacks;
 
 /**
  * Set AVFormatContext url field to the provided pointer. The pointer must

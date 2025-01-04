@@ -48,6 +48,14 @@ void ff_free_stream(AVStream **pst)
     if (!st)
         return;
 
+// //PLEX
+//     ff_lock_avformat();
+//     int (*close_stream)(AVFormatContext *ctx, AVStream *s) = decryption_callbacks.close_stream;
+//     ff_unlock_avformat();
+//     if (close_stream)
+//         close_stream(s, st);
+// //PLEX
+
 #if FF_API_AVSTREAM_SIDE_DATA
 FF_DISABLE_DEPRECATION_WARNINGS
     for (int i = 0; i < st->nb_side_data; i++)

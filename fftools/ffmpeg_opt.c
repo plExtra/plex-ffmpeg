@@ -53,6 +53,12 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
 
+//PLEX
+#include "plex.h"
+#include "libavutil/extlib.h"
+#include "libavformat/internal.h"
+//PLEX
+
 const char *const opt_name_codec_names[]                      = {"c", "codec", "acodec", "vcodec", "scodec", "dcodec", NULL};
 const char *const opt_name_frame_rates[]                      = {"r", NULL};
 const char *const opt_name_codec_tags[]                       = {"tag", "atag", "vtag", "stag", NULL};
@@ -90,6 +96,9 @@ int vstats_version = 2;
 int auto_conversion_filters = 1;
 int64_t stats_period = 500000;
 
+//PLEX
+int exit_on_io_error = 0;
+//PLEX
 
 static int file_overwrite     = 0;
 static int no_file_overwrite  = 0;

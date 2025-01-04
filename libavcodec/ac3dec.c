@@ -1645,6 +1645,14 @@ dependent_frame:
     if (s->bitstream_mode == 0x7 && s->channels > 1)
         avctx->audio_service_type = AV_AUDIO_SERVICE_TYPE_KARAOKE;
 
+// PLEX
+    // The parser or something terrible in libavformat can overwrite this.
+    if (USE_FIXED)
+        avctx->sample_fmt = AV_SAMPLE_FMT_S16P;
+    else
+        avctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
+// PLEX
+
     /* decode the audio blocks */
     channel_map = ff_ac3_dec_channel_map[s->output_mode & ~AC3_OUTPUT_LFEON][s->lfe_on];
     offset = s->frame_type == EAC3_FRAME_TYPE_DEPENDENT ? AC3_MAX_CHANNELS : 0;

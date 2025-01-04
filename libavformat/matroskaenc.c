@@ -21,6 +21,10 @@
 
 #include <stdint.h>
 
+//PLEX
+#include <stdlib.h>
+//PLEX
+
 #include "config_components.h"
 
 #include "av1.h"
@@ -256,6 +260,7 @@ typedef struct MatroskaMuxContext {
     int                 flipped_raw_rgb;
     int                 default_mode;
     int                 move_cues_to_front;
+    int                 strip_dovi; // PLEX
 
     uint32_t            segment_uid[4];
 } MatroskaMuxContext;
@@ -1977,6 +1982,9 @@ static int mkv_write_track(AVFormatContext *s, MatroskaMuxContext *mkv,
         ret = mkv_write_track_video(s, mkv, st, par, pb);
         if (ret < 0)
             return ret;
+        
+        if (!IS_WEBM(mkv) && !mkv->strip_dovi) // PLEX
+            mkv_write_dovi(s, pb, st);
 
         break;
 
@@ -2531,7 +2539,7 @@ static int mkv_write_info(AVFormatContext *s)
     // reserve space for the duration
     mkv->duration = 0;
     mkv->duration_offset = avio_tell(pb);
-    if (!mkv->is_live) {
+    if (!mkv->is_live || 1) { // PLEX: short-circuit
         int64_t metadata_duration = get_metadata_duration(s);
 
         if (s->duration > 0) {
@@ -2963,6 +2971,14 @@ static int mkv_write_packet_internal(AVFormatContext *s, const AVPacket *pkt)
     int ret;
     int64_t ts = track->write_dts ? pkt->dts : pkt->pts;
     int64_t relative_packet_pos;
+
+    //PLEX
+    if (ts == AV_NOPTS_VALUE && !mkv->tracks[pkt->stream_index].write_dts) {
+        av_log(s, AV_LOG_WARNING, "Switching to DTS.\n");
+        mkv->tracks[pkt->stream_index].write_dts = 1;
+        ts = pkt->dts;
+    }
+    //PLEX
 
     if (ts == AV_NOPTS_VALUE) {
         av_log(s, AV_LOG_ERROR, "Can't write packet with unknown timestamp\n");
@@ -3511,6 +3527,9 @@ static const AVOption options[] = {
     { "infer", "For each track type, mark each track of disposition default as default; if none exists, mark the first track as default.", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_INFER }, 0, 0, FLAGS, "default_mode" },
     { "infer_no_subs", "For each track type, mark each track of disposition default as default; for audio and video: if none exists, mark the first track as default.", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_INFER_NO_SUBS }, 0, 0, FLAGS, "default_mode" },
     { "passthrough", "Use the disposition flag as-is", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_PASSTHROUGH }, 0, 0, FLAGS, "default_mode" },
+    // PLEX
+    { "strip_dovi", "Do not write out DOVI metadata", OFFSET(strip_dovi), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
+    // PLEX
     { NULL },
 };
 

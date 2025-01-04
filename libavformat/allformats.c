@@ -567,6 +567,12 @@ extern const AVInputFormat  ff_libmodplug_demuxer;
 extern const AVInputFormat  ff_libopenmpt_demuxer;
 extern const AVInputFormat  ff_vapoursynth_demuxer;
 
+//PLEX
+extern const AVInputFormat  ff_mp1_demuxer;
+extern const AVOutputFormat ff_mp1_muxer;
+extern const AVInputFormat  ff_mp2_demuxer;
+//^PLEX
+
 #include "libavformat/muxer_list.c"
 #include "libavformat/demuxer_list.c"
 

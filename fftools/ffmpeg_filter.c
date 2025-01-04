@@ -38,6 +38,10 @@
 #include "libavutil/samplefmt.h"
 #include "libavutil/timestamp.h"
 
+//PLEX
+#include "plex.h"
+//PLEX
+
 // FIXME private header, used for mid_pred()
 #include "libavcodec/mathops.h"
 
@@ -1417,6 +1421,13 @@ static int configure_input_video_filter(FilterGraph *fg, InputFilter *ifilter,
     if(!sar.den)
         sar = (AVRational){0,1};
     av_bprint_init(&args, 0, AV_BPRINT_SIZE_AUTOMATIC);
+    // PLEX
+    // If we run out of time in the analysis probe, the pixel format might
+    // not be detected correctly. This sets a sane default if that happens,
+    // which is probably good >75% of the time, which is better than 0%.
+    if (ifilter->format == AV_PIX_FMT_NONE)
+        ifilter->format = AV_PIX_FMT_YUV420P;
+    // PLEX
     av_bprintf(&args,
              "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:"
              "pixel_aspect=%d/%d",
@@ -1517,6 +1528,11 @@ static int configure_input_audio_filter(FilterGraph *fg, InputFilter *ifilter,
     char name[255];
     int ret, pad_idx = 0;
     int64_t tsoffset = 0;
+//PLEX
+    // remove once we strictly use a format from decoded frames
+    if (ifilter->format == AV_SAMPLE_FMT_NONE)
+        ifilter->format = AV_SAMPLE_FMT_S16P;
+//PLEX
 
     if (ist->dec_ctx->codec_type != AVMEDIA_TYPE_AUDIO) {
         av_log(fg, AV_LOG_ERROR, "Cannot connect audio filter to non audio input\n");
@@ -1713,6 +1729,11 @@ static int configure_filtergraph(FilterGraph *fg)
         if (ret < 0)
             goto fail;
     }
+
+//PLEX
+    //make sure the inlineasscontext is set up properly for each stream
+    plex_link_subtitles_to_graph(fg->graph);
+//PLEX
 
     for (i = 0; i < fg->nb_inputs; i++) {
         InputFilterPriv *ifp = ifp_from_ifilter(fg->inputs[i]);

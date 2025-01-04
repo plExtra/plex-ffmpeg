@@ -207,6 +207,15 @@ FF_ENABLE_DEPRECATION_WARNINGS
         break;
     }
 
+    //PLEX
+    par->separate_fields = codec->separate_fields;
+    par->scaling_matrix_present = codec->scaling_matrix_present;
+    par->refs = codec->refs;
+    par->coded_width = codec->coded_width;
+    par->coded_height = codec->coded_height;
+    par->properties = codec->properties;
+    //PLEX
+
     if (codec->extradata) {
         par->extradata = av_mallocz(codec->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
         if (!par->extradata)

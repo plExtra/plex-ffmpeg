@@ -42,6 +42,9 @@
 #include "network.h"
 #include "os_support.h"
 #include "url.h"
+
+#include "avio_internal.h" //PLEX
+
 #include "version.h"
 
 /* XXX: POST protocol is not completely implemented because ffmpeg uses
@@ -490,6 +493,16 @@ int ff_http_do_new_request2(URLContext *h, const char *uri, AVDictionary **opts)
     if (s->willclose)
         return AVERROR_EOF;
 
+    // PLEX
+    ret = 0;
+    while (ret >= 0) {
+        char buf[1024];
+        ret = h->prot->url_read(h, buf, sizeof(buf));
+        if (ret < 0 && ret != AVERROR_EOF)
+            return ret;
+    }
+    //PLEX
+
     s->end_chunked_post = 0;
     s->chunkend      = 0;
     s->off           = 0;
@@ -513,6 +526,31 @@ int ff_http_do_new_request2(URLContext *h, const char *uri, AVDictionary **opts)
     av_dict_free(&options);
     return ret;
 }
+
+//PLEX
+int avformat_http_do_new_request(AVIOContext *pb, const char *uri, const char *verb)
+{
+    int ret;
+    AVDictionary *options = NULL;
+    URLContext *h = ffio_geturlcontext(pb);
+    HTTPContext *s = h->priv_data;
+
+    s->end_chunked_post = 0;
+    s->chunkend      = 0;
+    s->off           = 0;
+    s->icy_data_read = 0;
+
+    av_free(s->method);
+    s->method = av_strdup(verb);
+    av_free(s->location);
+    s->location = av_strdup(uri);
+
+    ret = http_open_cnx(h, &options);
+    av_dict_free(&options);
+
+    return ret;
+}
+//PLEX
 
 int ff_http_averror(int status_code, int default_averror)
 {

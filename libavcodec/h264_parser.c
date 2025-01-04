@@ -49,6 +49,7 @@
 #include "parser.h"
 #include "refstruct.h"
 #include "startcode.h"
+#include "decode.h"
 
 typedef struct H264ParseContext {
     ParseContext pc;
@@ -565,6 +566,10 @@ static inline int parse_nal_units(AVCodecParserContext *s,
                 av_reduce(&avctx->framerate.den, &avctx->framerate.num,
                           sps->num_units_in_tick * 2, den, 1 << 30);
             }
+
+            //PLEX
+            ff_set_sar(avctx, sps->vui.sar);
+            //PLEX
 
             av_freep(&rbsp.rbsp_buffer);
             return 0; /* no need to evaluate the rest */

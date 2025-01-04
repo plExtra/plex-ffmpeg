@@ -114,7 +114,7 @@ int ff_scale_adjust_dimensions(AVFilterLink *inlink,
     int *ret_w, int *ret_h,
     int force_original_aspect_ratio, int force_divisible_by)
 {
-    int64_t w, h;
+    int w, h;
     int factor_w, factor_h;
 
     w = *ret_w;
@@ -148,17 +148,21 @@ int ff_scale_adjust_dimensions(AVFilterLink *inlink,
      * dimensions so that it is not divisible by the set factors anymore
      * unless force_divisible_by is defined as well */
     if (force_original_aspect_ratio) {
-        // Including force_divisible_by here rounds to the nearest multiple of it.
-        int64_t tmp_w = av_rescale(h, inlink->w, inlink->h * (int64_t)force_divisible_by)
-                    * force_divisible_by;
-        int64_t tmp_h = av_rescale(w, inlink->h, inlink->w * (int64_t)force_divisible_by)
-                    * force_divisible_by;
+        int tmp_w = av_rescale(h, inlink->w, inlink->h);
+        int tmp_h = av_rescale(w, inlink->h, inlink->w);
+
+        //PLEX: Use the DAR instead of the raw pixel ratio
+        if (inlink->sample_aspect_ratio.num && inlink->sample_aspect_ratio.den) {
+            tmp_w = av_rescale(h, inlink->w * inlink->sample_aspect_ratio.num, inlink->h * inlink->sample_aspect_ratio.den);
+            tmp_h = av_rescale(w, inlink->h * inlink->sample_aspect_ratio.den, inlink->w * inlink->sample_aspect_ratio.num);
+        }
+        //PLEX
 
         if (force_original_aspect_ratio == 1) {
              w = FFMIN(tmp_w, w);
              h = FFMIN(tmp_h, h);
              if (force_divisible_by > 1) {
-                 // round down in case provided w or h is not divisible.
+                 // round down
                  w = w / force_divisible_by * force_divisible_by;
                  h = h / force_divisible_by * force_divisible_by;
              }
@@ -166,15 +170,12 @@ int ff_scale_adjust_dimensions(AVFilterLink *inlink,
              w = FFMAX(tmp_w, w);
              h = FFMAX(tmp_h, h);
              if (force_divisible_by > 1) {
-                 // round up in case provided w or h is not divisible.
+                 // round up
                  w = (w + force_divisible_by - 1) / force_divisible_by * force_divisible_by;
                  h = (h + force_divisible_by - 1) / force_divisible_by * force_divisible_by;
              }
         }
     }
-
-    if ((int32_t)w != w || (int32_t)h != h)
-        return AVERROR(EINVAL);
 
     *ret_w = w;
     *ret_h = h;

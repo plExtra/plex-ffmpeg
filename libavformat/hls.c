@@ -44,6 +44,7 @@
 #include "avio_internal.h"
 #include "id3v2.h"
 #include "url.h"
+#include "isom.h"
 
 #include "hls_sample_encryption.h"
 
@@ -2414,7 +2415,16 @@ static int hls_read_packet(AVFormatContext *s, AVPacket *pkt)
 
         /* There may be more situations where this would be useful, but this at least
          * handles newly probed codecs properly (i.e. request_probe by mpegts). */
-        if (ist->codecpar->codec_id != st->codecpar->codec_id) {
+        if (ist->codecpar->codec_id != st->codecpar->codec_id
+//PLEX
+        //  || (isti->avctx && (
+        //       (isti->avctx->height && !ist->codecpar->height) ||
+        //       (isti->avctx->sample_rate && !ist->codecpar->sample_rate)
+        //     ))
+         || (ist->codecpar->sample_rate && !st->codecpar->sample_rate)
+         || (ist->codecpar->ch_layout.nb_channels && !st->codecpar->ch_layout.nb_channels)
+//PLEX
+            ) {
             ret = set_stream_info_from_input_stream(st, pls, ist);
             if (ret < 0) {
                 return ret;

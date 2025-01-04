@@ -46,6 +46,19 @@ const uint8_t ff_dca_dmix_primary_nch[8] = {
     1, 2, 2, 3, 3, 4, 4, 0
 };
 
+const uint8_t ff_dca_audio_mode_ch_mask[] = {
+    DCA_SPEAKER_LAYOUT_MONO,
+    DCA_SPEAKER_LAYOUT_STEREO,
+    DCA_SPEAKER_LAYOUT_STEREO,
+    DCA_SPEAKER_LAYOUT_STEREO,
+    DCA_SPEAKER_LAYOUT_STEREO,
+    DCA_SPEAKER_LAYOUT_3_0,
+    DCA_SPEAKER_LAYOUT_2_1,
+    DCA_SPEAKER_LAYOUT_3_1,
+    DCA_SPEAKER_LAYOUT_2_2,
+    DCA_SPEAKER_LAYOUT_5POINT0
+};
+
 const uint8_t ff_dca_quant_index_sel_nbits[DCA_CODE_BOOKS] = {
     1, 2, 2, 2, 2, 3, 3, 3, 3, 3
 };
@@ -9194,3 +9207,4 @@ const float ff_dca_lfe_iir[5][4] = {
     { -0.99591690, 1.9956781, 1.0, -1.9993745 },
     { -0.99872285, 1.9984550, 1.0, -1.9994639 }
 };
+

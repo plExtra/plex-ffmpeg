@@ -153,6 +153,7 @@ typedef struct DASHContext {
     int nb_as;
     int window_size;
     int extra_window_size;
+    int64_t time_delta; //PLEX
     int64_t seg_duration;
     int64_t frag_duration;
     int remove_at_exit;
@@ -171,6 +172,12 @@ typedef struct DASHContext {
     const char *init_seg_name;
     const char *media_seg_name;
     const char *utc_timing_url;
+//PLEX
+    int break_non_keyframes;
+    const char *manifest_file_name;
+    int delete_removed;
+    int skip_to_segment;
+//PLEX
     const char *method;
     const char *user_agent;
     AVDictionary *http_opts;
@@ -370,6 +377,12 @@ static void set_codec_str(AVFormatContext *s, AVCodecParameters *par,
         return;
 
     tag = par->codec_tag;
+
+    //PLEX
+    if (tag && av_codec_get_id(tags, tag) != par->codec_id)
+        tag = 0;
+    //PLEX
+
     if (!tag)
         tag = av_codec_get_tag(tags, par->codec_id);
     if (!tag)
@@ -1642,6 +1655,10 @@ FF_ENABLE_DEPRECATION_WARNINGS
                 else
                     av_dict_set(&opts, "movflags", "+dash+delay_moov+skip_trailer", AV_DICT_APPEND);
             }
+            //PLEX
+            if (c->skip_to_segment > 1)
+                av_dict_set(&opts, "movflags", "+frag_discont", AV_DICT_APPEND);
+            //PLEX
             if (os->frag_type == FRAG_TYPE_EVERY_FRAME)
                 av_dict_set(&opts, "movflags", "+frag_every_frame", AV_DICT_APPEND);
             else
@@ -1665,6 +1682,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
         avio_flush(ctx->pb);
 
         av_log(s, AV_LOG_VERBOSE, "Representation %d init segment will be written to: %s\n", i, filename);
+
+//PLEX
+        if (c->skip_to_segment > 1)
+            av_opt_set_int(os->ctx, "fragments", c->skip_to_segment, AV_OPT_SEARCH_CHILDREN);
+//PLEX
 
         s->streams[i]->time_base = st->time_base;
         // If the muxer wants to shift timestamps, request to have them shifted
@@ -1711,7 +1733,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         os->first_pts = AV_NOPTS_VALUE;
         os->max_pts = AV_NOPTS_VALUE;
         os->last_dts = AV_NOPTS_VALUE;
-        os->segment_index = 1;
+        os->segment_index = c->skip_to_segment; //PLEX
 
         if (s->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
             c->nr_of_streams_to_flush++;
@@ -1897,8 +1919,10 @@ static int dashenc_delete_segment_file(AVFormatContext *s, const char* file)
 
 static inline void dashenc_delete_media_segments(AVFormatContext *s, OutputStream *os, int remove_count)
 {
+    DASHContext *c = s->priv_data; //PLEX
     for (int i = 0; i < remove_count; ++i) {
-        dashenc_delete_segment_file(s, os->segments[i]->file);
+        if (c->delete_removed) // PLEX
+            dashenc_delete_segment_file(s, os->segments[i]->file);
 
         // Delete the segment regardless of whether the file was successfully deleted
         av_free(os->segments[i]);
@@ -2140,7 +2164,7 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         as->max_frag_duration = FFMAX(frame_duration, as->max_frag_duration);
     }
 
-    if (c->use_template && !c->use_timeline) {
+    if ((c->use_template && !c->use_timeline) || 1) { //PLEX
         elapsed_duration = pkt->pts - os->first_pts;
         seg_end_duration = (int64_t) os->segment_index * os->seg_duration;
     } else {
@@ -2161,7 +2185,8 @@ static int dash_write_packet(AVFormatContext *s, AVPacket *pkt)
         os->coding_dependency |= os->parser->pict_type != AV_PICTURE_TYPE_I;
     }
 
-    if (pkt->flags & AV_PKT_FLAG_KEY && os->packets_written &&
+    if (((pkt->flags & AV_PKT_FLAG_KEY) || c->break_non_keyframes) && os->packets_written &&
+        (!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) && //PLEX
         av_compare_ts(elapsed_duration, st->time_base,
                       seg_end_duration, AV_TIME_BASE_Q) >= 0) {
         if (!c->has_video || st->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -2364,6 +2389,7 @@ static const AVOption options[] = {
     { "window_size", "number of segments kept in the manifest", OFFSET(window_size), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, INT_MAX, E },
     { "extra_window_size", "number of segments kept outside of the manifest before removing from disk", OFFSET(extra_window_size), AV_OPT_TYPE_INT, { .i64 = 5 }, 0, INT_MAX, E },
     { "seg_duration", "segment duration (in seconds, fractional value can be set)", OFFSET(seg_duration), AV_OPT_TYPE_DURATION, { .i64 = 5000000 }, 0, INT_MAX, E },
+    { "time_delta", "set approximation value used for the segment times", OFFSET(time_delta), AV_OPT_TYPE_DURATION, { .i64 = 0 }, 0, INT64_MAX, E }, //PLEX
     { "frag_duration", "fragment duration (in seconds, fractional value can be set)", OFFSET(frag_duration), AV_OPT_TYPE_DURATION, { .i64 = 0 }, 0, INT_MAX, E },
     { "frag_type", "set type of interval for fragments", OFFSET(frag_type), AV_OPT_TYPE_INT, {.i64 = FRAG_TYPE_NONE }, 0, FRAG_TYPE_NB - 1, E, "frag_type"},
     { "none", "one fragment per segment", 0, AV_OPT_TYPE_CONST, {.i64 = FRAG_TYPE_NONE }, 0, UINT_MAX, E, "frag_type"},
@@ -2378,6 +2404,12 @@ static const AVOption options[] = {
     { "init_seg_name", "DASH-templated name to used for the initialization segment", OFFSET(init_seg_name), AV_OPT_TYPE_STRING, {.str = "init-stream$RepresentationID$.$ext$"}, 0, 0, E },
     { "media_seg_name", "DASH-templated name to used for the media segments", OFFSET(media_seg_name), AV_OPT_TYPE_STRING, {.str = "chunk-stream$RepresentationID$-$Number%05d$.$ext$"}, 0, 0, E },
     { "utc_timing_url", "URL of the page that will return the UTC timestamp in ISO format", OFFSET(utc_timing_url), AV_OPT_TYPE_STRING, { 0 }, 0, 0, E },
+//PLEX
+    { "manifest_name", "Location to write the manifest (does not affect segments)", OFFSET(manifest_file_name), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, E },
+    { "skip_to_segment", "first segment number to actually write", OFFSET(skip_to_segment), AV_OPT_TYPE_INT, { .i64 = 1 }, 1, INT_MAX, E },
+    { "break_non_keyframes", "allow breaking segments on non-keyframes", OFFSET(break_non_keyframes), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, E },
+    { "delete_removed", "delete segments that are removed from the list", OFFSET(delete_removed), AV_OPT_TYPE_BOOL, {.i64 = 1}, 0, 1, E },
+//PLEX
     { "method", "set the HTTP method", OFFSET(method), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, E },
     { "http_user_agent", "override User-Agent field in HTTP header", OFFSET(user_agent), AV_OPT_TYPE_STRING, {.str = NULL}, 0, 0, E},
     { "http_persistent", "Use persistent HTTP connections", OFFSET(http_persistent), AV_OPT_TYPE_BOOL, {.i64 = 0 }, 0, 1, E },

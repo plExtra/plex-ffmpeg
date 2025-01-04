@@ -3134,6 +3134,9 @@ static int mpegts_read_header(AVFormatContext *s)
         mpegts_open_section_filter(ts, PAT_PID, pat_cb, ts, 1);
         mpegts_open_section_filter(ts, EIT_PID, eit_cb, ts, 1);
 
+        handle_packets(ts, 1000); //PLEX: hardcoded low packet count; relying on find_stream_info
+        /* if could not find service, enable auto_guess */
+
         handle_packets(ts, probesize / ts->raw_packet_size);
         /* if could not find service, enable auto_guess */
 

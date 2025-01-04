@@ -18,6 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "config_components.h"
+
 #include "libavutil/opt.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/thread.h"
@@ -147,13 +149,15 @@ void ff_dca_downmix_to_stereo_float(AVFloatDSPContext *fdsp, float **samples,
     }
 }
 
-static int dcadec_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+#if CONFIG_DCA_DECODER
+static int dcadec_decode_frame(AVCodecContext *avctx, void *data,
                                int *got_frame_ptr, AVPacket *avpkt)
 {
     DCAContext *s = avctx->priv_data;
-    const uint8_t *input = avpkt->data;
+    AVFrame *frame = data;
+    uint8_t *input = avpkt->data;
     int input_size = avpkt->size;
-    int i, ret, prev_packet = s->packet;
+    int i, ret;//PLEX, prev_packet = s->packet;
     uint32_t mrk;
 
     if (input_size < MIN_PACKET_SIZE || input_size > MAX_PACKET_SIZE) {
@@ -199,6 +203,7 @@ static int dcadec_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         }
     }
 
+#if 0 //PLEX
     if (!s->core_only) {
         DCAExssAsset *asset = NULL;
 
@@ -217,10 +222,11 @@ static int dcadec_decode_frame(AVCodecContext *avctx, AVFrame *frame,
         if (asset && (asset->extension_mask & DCA_EXSS_XLL)) {
             if ((ret = ff_dca_xll_parse(&s->xll, input, asset)) < 0) {
                 // Conceal XLL synchronization error
-                if (ret == AVERROR(EAGAIN)) {
-                    if ((prev_packet & DCA_PACKET_XLL) && (s->packet & DCA_PACKET_CORE))
-                        s->packet |= DCA_PACKET_XLL | DCA_PACKET_RECOVERY;
-                } else if (ret == AVERROR(ENOMEM) || (avctx->err_recognition & AV_EF_EXPLODE))
+                if (ret == AVERROR(EAGAIN)
+                    && (prev_packet & DCA_PACKET_XLL)
+                    && (s->packet & DCA_PACKET_CORE))
+                    s->packet |= DCA_PACKET_XLL | DCA_PACKET_RECOVERY;
+                else if (ret == AVERROR(ENOMEM) || (avctx->err_recognition & AV_EF_EXPLODE))
                     return ret;
             } else {
                 s->packet |= DCA_PACKET_XLL;
@@ -280,6 +286,9 @@ static int dcadec_decode_frame(AVCodecContext *avctx, AVFrame *frame,
             if ((ret = ff_dca_core_filter_frame(&s->core, frame)) < 0)
                 return ret;
         }
+#else //PLEX
+    if (0) {
+#endif //PLEX
     } else if (s->packet & DCA_PACKET_CORE) {
         if ((ret = ff_dca_core_filter_frame(&s->core, frame)) < 0)
             return ret;
@@ -302,8 +311,10 @@ static av_cold void dcadec_flush(AVCodecContext *avctx)
     DCAContext *s = avctx->priv_data;
 
     ff_dca_core_flush(&s->core);
+#if 0 //PLEX
     ff_dca_xll_flush(&s->xll);
     ff_dca_lbr_flush(&s->lbr);
+#endif //PLEX
 
     s->packet &= DCA_PACKET_MASK;
 }
@@ -313,8 +324,10 @@ static av_cold int dcadec_close(AVCodecContext *avctx)
     DCAContext *s = avctx->priv_data;
 
     ff_dca_core_close(&s->core);
+#if 0 //PLEX
     ff_dca_xll_close(&s->xll);
     ff_dca_lbr_close(&s->lbr);
+#endif
 
     av_freep(&s->buffer);
     s->buffer_size = 0;
@@ -342,8 +355,10 @@ static av_cold int dcadec_init(AVCodecContext *avctx)
     if (ff_dca_core_init(&s->core) < 0)
         return AVERROR(ENOMEM);
 
+#if 0 //PLEX
     if (ff_dca_lbr_init(&s->lbr) < 0)
         return AVERROR(ENOMEM);
+#endif //PLEX
 
     ff_dcadsp_init(&s->dcadsp);
     s->core.dcadsp = &s->dcadsp;
@@ -411,18 +426,19 @@ static const AVClass dcadec_class = {
 
 const FFCodec ff_dca_decoder = {
     .p.name         = "dca",
-    CODEC_LONG_NAME("DCA (DTS Coherent Acoustics)"),
+    .p.long_name    = NULL_IF_CONFIG_SMALL("DCA (DTS Coherent Acoustics)"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_DTS,
     .priv_data_size = sizeof(DCAContext),
     .init           = dcadec_init,
-    FF_CODEC_DECODE_CB(dcadec_decode_frame),
+    .decode         = dcadec_decode_frame,
     .close          = dcadec_close,
     .flush          = dcadec_flush,
-    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .p.capabilities   = AV_CODEC_CAP_DR1, // PLEX: removed AV_CODEC_CAP_CHANNEL_CONF
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P,
                                                       AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE },
     .p.priv_class   = &dcadec_class,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_dca_profiles),
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
 };
+#endif

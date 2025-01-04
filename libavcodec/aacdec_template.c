@@ -2499,6 +2499,15 @@ static int decode_extension_payload(AACContext *ac, GetBitContext *gb, int cnt,
             ac->warned_he_aac_mono = 1;
         }
         break;
+//PLEX
+#ifdef BUILDING_AAC_LC_DECODER_EXTERNAL
+        skip_bits_long(gb, 8 * cnt - 4);
+        break;
+#else
+        res = AAC_RENAME(ff_decode_sbr_extension)(ac, &che->sbr, gb, crc_flag, cnt, elem_type);
+        break;
+#endif
+//PLEX
     case EXT_DYNAMIC_RANGE:
         res = decode_dynamic_range(&ac->che_drc, gb);
         break;

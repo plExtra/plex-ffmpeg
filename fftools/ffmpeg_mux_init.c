@@ -89,6 +89,8 @@ static const char *const opt_name_frame_sizes[]               = {"s", NULL};
 static const char *const opt_name_frame_pix_fmts[]            = {"pix_fmt", NULL};
 static const char *const opt_name_sample_fmts[]               = {"sample_fmt", NULL};
 
+static const char *const opt_name_hwaccel_fallback_thresholds[] = {"hwaccel_fallback_threshold", NULL};
+
 static int check_opt_bitexact(void *ctx, const AVDictionary *opts,
                               const char *opt_name, int flag)
 {

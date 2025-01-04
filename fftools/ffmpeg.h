@@ -266,6 +266,12 @@ typedef struct OptionsContext {
     int        nb_time_bases;
     SpecifierOpt *enc_time_bases;
     int        nb_enc_time_bases;
+
+    // PLEX
+    SpecifierOpt *hwaccel_fallback_thresholds;
+    int        nb_hwaccel_fallback_thresholds;
+    // PLEX
+
     SpecifierOpt *autoscale;
     int        nb_autoscale;
     SpecifierOpt *bits_per_raw_sample;
@@ -389,6 +395,12 @@ typedef struct InputStream {
     uint64_t frames_decoded;
     uint64_t samples_decoded;
     uint64_t decode_errors;
+
+    // PLEX
+    int hwaccel_active;             // whether hwdec was initialized
+    int hwaccel_blocked;            // if set, don't try to use hwaccel
+    int hwaccel_error_counter;      // current error counter for fallback
+    int hwaccel_fallback_threshold; // after how many errors to start fallback
 } InputStream;
 
 typedef struct LastFrameDuration {
@@ -684,6 +696,10 @@ extern char *filter_nbthreads;
 extern int filter_complex_nbthreads;
 extern int vstats_version;
 extern int auto_conversion_filters;
+
+//PLEX
+extern int exit_on_io_error;
+//PLEX
 
 extern const AVIOInterruptCB int_cb;
 

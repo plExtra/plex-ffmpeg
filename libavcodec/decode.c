@@ -446,6 +446,13 @@ FF_ENABLE_DEPRECATION_WARNINGS
         ret = (!got_frame || frame->flags & AV_FRAME_FLAG_DISCARD)
                           ? AVERROR(EAGAIN)
                           : 0;
+        // //PLEX
+        // if (avctx->field_order == AV_FIELD_UNKNOWN &&
+        //     avctx->codec_type == AVMEDIA_TYPE_VIDEO &&
+        //     frame->interlaced_frame) {
+        //     avctx->field_order = (frame->top_field_first ? AV_FIELD_TT : AV_FIELD_BB);
+        // }
+        // //PLEX
     } else if (avctx->codec->type == AVMEDIA_TYPE_AUDIO) {
         ret =  !got_frame ? AVERROR(EAGAIN)
                           : discard_samples(avctx, frame, discarded_samples);

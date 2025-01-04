@@ -39,7 +39,7 @@
 float ff_aac_pow2sf_tab[428];
 float ff_aac_pow34sf_tab[428];
 
-#if CONFIG_AAC_ENCODER || CONFIG_AAC_DECODER
+#if CONFIG_AAC_ENCODER || CONFIG_AAC_DECODER || CONFIG_AAC_LC_DECODER //PLEX
 #include "kbdwin.h"
 #include "sinewin.h"
 

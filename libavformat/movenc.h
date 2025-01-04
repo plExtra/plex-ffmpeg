@@ -244,6 +244,11 @@ typedef struct MOVMuxContext {
     int write_tmcd;
     MOVPrftBox write_prft;
     int empty_hdlr_name;
+
+//PLEX
+    int video_width, video_height;
+//PLEX
+
     int movie_timescale;
 
     int64_t avif_extent_pos[2];  // index 0 is YUV and 1 is Alpha.
