@@ -1584,7 +1584,6 @@ static int decode_frame_apng(AVCodecContext *avctx, AVFrame *p,
                              int *got_frame, AVPacket *avpkt)
 {
     PNGDecContext *const s = avctx->priv_data;
-    AVFrame     *dst_frame = data;
     int ret;
 
     clear_frame_metadata(s);

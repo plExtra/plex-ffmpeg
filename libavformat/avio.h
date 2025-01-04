@@ -280,12 +280,6 @@ typedef struct AVIOContext {
     const char *protocol_blacklist;
 
     /**
-     * Append all data read or written to this file.
-     */
-    const char *trace_file;
-    int trace_fd;
-
-    /**
      * A callback that is used instead of write_packet.
      */
     int (*write_data_type)(void *opaque, uint8_t *buf, int buf_size,
@@ -524,6 +518,12 @@ int64_t avio_size(AVIOContext *s);
  * @return non zero if and only if at end of file or a read error happened when reading.
  */
 int avio_feof(AVIOContext *s);
+
+/**
+ * Writes a formatted string to the context taking a va_list.
+ * @return number of bytes written, < 0 on error.
+ */
+int avio_vprintf(AVIOContext *s, const char *fmt, va_list ap);
 
 /**
  * Writes a formatted string to the context.
