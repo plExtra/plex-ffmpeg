@@ -1,0 +1,28 @@
+{
+	"files.associations": {
+		"packet.h": "c",
+		"rational.h": "c",
+		"avutil.h": "c",
+		"time.h": "c",
+		"select.h": "c",
+		"plex.h": "c",
+		"termios.h": "c",
+		"http.h": "c",
+		"typeinfo": "c",
+		"swresample.h": "c",
+		"ffmpeg.h": "c",
+		"formats.h": "c",
+		"pixfmt.h": "c",
+		"pixdesc.h": "c",
+		"avformat.h": "c",
+		"bprint.h": "c",
+		"display.h": "c",
+		"avstring.h": "c",
+		"vf_subtitles.h": "c",
+		"internal.h": "c",
+		"config.h": "c",
+		"config_components.h": "c",
+		"avcodec.h": "c",
+		"ass.h": "c"
+	}
+}

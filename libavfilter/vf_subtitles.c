@@ -45,6 +45,8 @@
 #include "internal.h"
 #include "formats.h"
 #include "video.h"
+#include "vf_subtitles.h"
+#include "fftools/ffmpeg.h"
 
 #define FF_ASS_FEATURE_WRAP_UNICODE     (LIBASS_VERSION >= 0x01600010)
 
@@ -103,10 +105,10 @@ static av_cold int init(AVFilterContext *ctx)
 {
     AssContext *ass = ctx->priv;
 
-    if (!ass->filename) {
-        av_log(ctx, AV_LOG_ERROR, "No filename provided!\n");
-        return AVERROR(EINVAL);
-    }
+    // if (!ass->filename) {
+    //     av_log(ctx, AV_LOG_ERROR, "No filename provided!\n");
+    //     return AVERROR(EINVAL);
+    // }
 
     ass->library = ass_library_init();
     if (!ass->library) {
@@ -306,6 +308,39 @@ static int attachment_is_font(AVStream * st)
 
 AVFILTER_DEFINE_CLASS(subtitles);
 
+int append_subtitle_packet (InputStream *ist, AVPacket *pkt, AVFrame *frame) {
+    Decoder          *d = ist->decoder;
+    AVPacket *flush_pkt = NULL;
+    AVSubtitle subtitle;
+    int got_output;
+    int ret;
+
+    if (!pkt) {
+        flush_pkt = av_packet_alloc();
+        if (!flush_pkt)
+            return AVERROR(ENOMEM);
+    }
+
+    ret = avcodec_decode_subtitle2(ist->dec_ctx, &subtitle, &got_output, pkt ? pkt : flush_pkt);
+	// if (ret < 0) {
+	// 	av_log(ctx, AV_LOG_WARNING, "Error decoding: %s (ignored)\n", av_err2str(ret));
+	// }
+
+	if (got_output) {
+		const int64_t start_time = av_rescale_q(subtitle.pts, AV_TIME_BASE_Q, av_make_q(1, 1000));
+		const int64_t duration   = subtitle.end_display_time;
+
+		for (int i = 0; i < subtitle.num_rects; i++) {
+			char *ass_line = subtitle.rects[i]->ass;
+			if (!ass_line)
+				break;
+			// ass_process_chunk(ass->track, ass_line, strlen(ass_line), start_time, duration);
+		}
+	}
+
+	return ret;
+}
+
 static av_cold int init_subtitles(AVFilterContext *ctx)
 {
     int j, ret, sid;
@@ -319,7 +354,7 @@ static av_cold int init_subtitles(AVFilterContext *ctx)
     AVPacket pkt;
     AssContext *ass = ctx->priv;
 
-    /* Init libass */
+    // /* Init libass */
     ret = init(ctx);
     if (ret < 0)
         return ret;
@@ -330,11 +365,12 @@ static av_cold int init_subtitles(AVFilterContext *ctx)
     }
 
     /* Open subtitles file */
-    ret = avformat_open_input(&fmt, ass->filename, NULL, NULL);
+    ret = avformat_open_input(&fmt, "https://torrentio.strem.fun/realdebrid/ZUVUM3WDMKKJT5HR2BOA5PX6OWTBJF4NHD7N43ZQZTQJ4A7KLLQA/004d1bbbf3c927361b64732c9d773f88ff5b2204/null/25/%5BAnime%20Time%5D%20Steins%3BGate%20-%2001.mkv", NULL, NULL);
     if (ret < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Unable to open %s\n", ass->filename);
+        av_log(ctx, AV_LOG_ERROR, "Unable to open %s\n", "https://torrentio.strem.fun/realdebrid/ZUVUM3WDMKKJT5HR2BOA5PX6OWTBJF4NHD7N43ZQZTQJ4A7KLLQA/004d1bbbf3c927361b64732c9d773f88ff5b2204/null/25/%5BAnime%20Time%5D%20Steins%3BGate%20-%2001.mkv");
         goto end;
     }
+
     ret = avformat_find_stream_info(fmt, NULL);
     if (ret < 0)
         goto end;
@@ -344,9 +380,11 @@ static av_cold int init_subtitles(AVFilterContext *ctx)
         ret = av_find_best_stream(fmt, AVMEDIA_TYPE_SUBTITLE, -1, -1, NULL, 0);
     else {
         ret = -1;
+		printf("%d %d \n", ass->stream_index, fmt->nb_streams);
         if (ass->stream_index < fmt->nb_streams) {
             for (j = 0; j < fmt->nb_streams; j++) {
                 if (fmt->streams[j]->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE) {
+					printf("indexes: %d %d \n", ass->stream_index, k);
                     if (ass->stream_index == k) {
                         ret = j;
                         break;
@@ -470,6 +508,7 @@ static av_cold int init_subtitles(AVFilterContext *ctx)
         ass_process_codec_private(ass->track,
                                   dec_ctx->subtitle_header,
                                   dec_ctx->subtitle_header_size);
+
     while (av_read_frame(fmt, &pkt) >= 0) {
         int i, got_subtitle;
         AVSubtitle sub = {0};
